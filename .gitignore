@@ -20,6 +20,10 @@ src/
 *.pkg.tar.*
 *.src.tar.*
 
+# deb build artifacts
+packaging/debian/build/
+*.deb
+
 # Editor / OS junk
 .vscode/
 .idea/

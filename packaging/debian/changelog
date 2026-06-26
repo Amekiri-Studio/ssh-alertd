@@ -1,0 +1,5 @@
+ssh-alertd (0.1.0) unstable; urgency=medium
+
+  * Initial release: modular SSH login alert daemon with Telegram notifier.
+
+ -- Amekiri Studio <noreply@amekiri.studio>  Fri, 26 Jun 2026 00:00:00 +0000

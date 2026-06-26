@@ -1,0 +1,14 @@
+Package: ssh-alertd
+Version: @VERSION@
+Section: admin
+Priority: optional
+Architecture: @ARCH@
+Maintainer: Amekiri Studio <noreply@amekiri.studio>
+Depends: systemd
+Recommends: openssh-server
+Homepage: https://github.com/Amekiri-Studio/ssh-alertd
+Description: SSH login alert daemon
+ Watches sshd logs and sends an alert on every successful SSH login.
+ Telegram is supported today; WeCom, DingTalk, Feishu, WhatsApp and SMTP
+ backends are planned. Each alert includes the client IP, username,
+ client source port, authentication method and time.

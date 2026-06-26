@@ -1,0 +1,16 @@
+#!/bin/sh
+set -e
+
+case "$1" in
+	configure)
+		if [ -d /run/systemd/system ]; then
+			systemctl daemon-reload >/dev/null 2>&1 || true
+		fi
+		# 0640 keeps the bot token out of reach of other local users.
+		chmod 0640 /etc/ssh-alertd/config.json 2>/dev/null || true
+		echo "ssh-alertd: edit /etc/ssh-alertd/config.json (set bot_token & chat_id),"
+		echo "            then run: systemctl enable --now ssh-alertd"
+		;;
+esac
+
+exit 0
