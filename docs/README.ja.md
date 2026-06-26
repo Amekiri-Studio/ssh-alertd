@@ -12,8 +12,8 @@ Go で書かれた、小規模でモジュール化された SSH アラートデ
 - **クライアントポート**（クライアントの送信元ポート。sshd のログ行
   `from <IP> port <port>` から取得したもので、サーバーが待ち受けるポート 22 ではありません）
 
-現在は Telegram が実装されています。通知層はインターフェースになっているため、WhatsApp、
-WeCom、DingTalk、Feishu、SMTP を、システムの他の部分に手を加えることなく
+現在は Telegram と SMTP が実装されています。通知層はインターフェースになっているため、WhatsApp、
+WeCom、DingTalk、Feishu を、システムの他の部分に手を加えることなく
 独立したファイルとして追加できます。
 
 ## アーキテクチャ
@@ -29,6 +29,7 @@ internal/
   notifier/
     notifier.go               Notifier interface + concurrent Dispatcher
     telegram.go               Telegram Bot backend (one file per backend)
+    smtp.go                   SMTP (email) backend
 ```
 
 データフロー: `Source`（journald/file）→ `Monitor` が "Accepted ..." 行を解析 →
@@ -132,6 +133,35 @@ curl -s "https://api.telegram.org/bot<TOKEN>/sendMessage" \
 
 > ⚠️ `config.json` にはボットトークンが含まれます。`chmod 600` を設定し、
 > git の管理対象外にしてください。
+
+### SMTP(メール)のセットアップ
+
+メールでアラートを受信するには、`notifiers` の下に `smtp` ブロックを追加します。
+自前のメールサーバーに直接通信するため、Telegram に到達できないネットワークでも便利です。
+
+```json
+"smtp": {
+  "enabled": true,
+  "host": "smtp.example.com",
+  "port": 587,
+  "username": "alert@example.com",
+  "password": "your-smtp-password",
+  "from": "alert@example.com",
+  "to": ["admin@example.com"],
+  "encryption": "starttls"
+}
+```
+
+- `encryption`: `starttls`（デフォルト。通常は `port` `587`）、`tls`（暗黙的な
+  TLS / SMTPS。通常は `port` `465`）、または `none`（`port` 25。トランスポートの暗号化なし）。
+- `port`: 任意。`tls` の場合は `465`、それ以外の場合は `587` がデフォルトです。
+- `username` / `password`: 任意。`username` を省略すると認証をスキップします
+  （例: 内部リレー）。設定した場合は `PLAIN` 認証が使われます（そのため必ず TLS 上で行ってください）。
+- `to`: 1 つ以上の宛先。少なくとも 1 つが必要です。
+- 複数の通知バックエンドを同時に有効化できます。有効な各バックエンドは、すべての
+  アラートを独立して受け取ります。
+
+Telegram と SMTP は独立しています。一方を有効にしても、もう一方は必要ありません。
 
 ## 実行
 

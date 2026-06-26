@@ -13,8 +13,8 @@
 - **用戶端連接埠**（用戶端的來源連接埠，取自 sshd 日誌行中的
   `from <IP> port <port>`，而非伺服器監聽的 22 埠）
 
-目前已實作 Telegram。通知後端層是一個介面，因此 WhatsApp、
-企業微信、釘釘、飛書與 SMTP 都能以獨立、自成一體的檔案新增，
+目前已實作 Telegram 與 SMTP。通知後端層是一個介面，因此 WhatsApp、
+企業微信、釘釘與飛書都能以獨立、自成一體的檔案新增，
 而無須變動系統的其他部分。
 
 ## 架構
@@ -30,6 +30,7 @@ internal/
   notifier/
     notifier.go               Notifier interface + concurrent Dispatcher
     telegram.go               Telegram Bot backend (one file per backend)
+    smtp.go                   SMTP (email) backend
 ```
 
 資料流向：`Source`（journald/file）→ `Monitor` 解析 "Accepted ..." 行 →
@@ -133,6 +134,35 @@ curl -s "https://api.telegram.org/bot<TOKEN>/sendMessage" \
 
 > ⚠️ `config.json` 包含 bot token。請設定 `chmod 600` 並將其排除於
 > git 之外。
+
+### SMTP（郵件）設定
+
+在 `notifiers` 底下加入一個 `smtp` 區塊，即可透過電子郵件接收警示。
+這在 Telegram 無法連線的網路環境中相當實用，因為它會直接與你自己的
+郵件伺服器通訊。
+
+```json
+"smtp": {
+  "enabled": true,
+  "host": "smtp.example.com",
+  "port": 587,
+  "username": "alert@example.com",
+  "password": "your-smtp-password",
+  "from": "alert@example.com",
+  "to": ["admin@example.com"],
+  "encryption": "starttls"
+}
+```
+
+- `encryption`：`starttls`（預設，通常為 `port` `587`）、`tls`（隱式
+  TLS / SMTPS，通常為 `port` `465`），或 `none`（`port` 25，無傳輸層安全防護）。
+- `port`：選用——`tls` 預設為 `465`，否則為 `587`。
+- `username` / `password`：選用；省略 `username` 即可略過驗證
+  （例如內部中繼）。當有設定時，會使用 `PLAIN` 驗證（因此務必透過 TLS 進行）。
+- `to`：一個或多個收件者；至少需要一個。
+- 可以同時啟用多個通知後端——每個已啟用的後端都會獨立收到每一則警示。
+
+Telegram 與 SMTP 彼此獨立：啟用其中一個並不需要另一個。
 
 ## 執行
 

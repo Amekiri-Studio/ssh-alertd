@@ -11,7 +11,7 @@
 - **时间**
 - **客户端端口**（客户端的来源端口，取自 sshd 日志行 `from <IP> port <port>`——而非服务器的监听端口 22）
 
-目前已实现 Telegram。通知后端层是一个接口，因此 WhatsApp、企业微信、钉钉、飞书和 SMTP 都可以作为自包含的文件添加进来，而无需改动系统的其余部分。
+目前已实现 Telegram 和 SMTP。通知后端层是一个接口，因此 WhatsApp、企业微信、钉钉和飞书都可以作为自包含的文件添加进来，而无需改动系统的其余部分。
 
 ## 架构
 
@@ -26,6 +26,7 @@ internal/
   notifier/
     notifier.go               Notifier interface + concurrent Dispatcher
     telegram.go               Telegram Bot backend (one file per backend)
+    smtp.go                   SMTP (email) backend
 ```
 
 数据流：`Source`（journald/file）→ `Monitor` 解析 "Accepted ..." 行 → `Dispatcher` 将每个 `LoginEvent` 并发地分发给所有已启用的 `Notifier`。
@@ -110,6 +111,31 @@ curl -s "https://api.telegram.org/bot<TOKEN>/sendMessage" \
 `"ok":true` 表示配置正确；之后你将在下一次真实的 SSH 登录时收到告警。
 
 > ⚠️ `config.json` 包含 bot token。请设置 `chmod 600` 并将其排除在 git 之外。
+
+### SMTP（邮件）配置
+
+在 `notifiers` 下添加一个 `smtp` 块即可通过电子邮件接收告警。这在 Telegram 无法访问的网络中很方便，因为它会直接与你自己的邮件服务器通信。
+
+```json
+"smtp": {
+  "enabled": true,
+  "host": "smtp.example.com",
+  "port": 587,
+  "username": "alert@example.com",
+  "password": "your-smtp-password",
+  "from": "alert@example.com",
+  "to": ["admin@example.com"],
+  "encryption": "starttls"
+}
+```
+
+- `encryption`：`starttls`（默认，通常使用 `port` `587`）、`tls`（隐式 TLS / SMTPS，通常使用 `port` `465`）或 `none`（`port` 25，无传输层安全）。
+- `port`：可选——对于 `tls` 默认为 `465`，否则为 `587`。
+- `username` / `password`：可选；省略 `username` 可跳过认证（例如内部中继）。设置后将使用 `PLAIN` 认证（因此务必通过 TLS）。
+- `to`：一个或多个收件人；至少需要一个。
+- 可以同时启用多个通知后端——每个已启用的后端都会独立地收到每一条告警。
+
+Telegram 和 SMTP 相互独立：启用其中一个并不要求启用另一个。
 
 ## 运行
 
