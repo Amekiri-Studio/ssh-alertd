@@ -1,0 +1,4 @@
+# Create the dedicated system user/group the daemon runs as.
+# Installed to /usr/lib/sysusers.d/ssh-alertd.conf; applied by systemd-sysusers.
+#Type Name        ID  GECOS                Home  Shell
+u     ssh-alertd  -   "SSH Alert Daemon"   -     -

@@ -3,7 +3,7 @@
 # Usage: ./build.sh [version]   (default version: 0.1.0)
 set -euo pipefail
 
-VERSION="${1:-0.1.0}"
+VERSION="${1:-0.1.1}"
 HERE="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$HERE/../.." && pwd)"
 
@@ -18,6 +18,8 @@ rm -rf "$STAGE"
 mkdir -p "$STAGE/DEBIAN" \
 	"$STAGE/usr/bin" \
 	"$STAGE/lib/systemd/system" \
+	"$STAGE/usr/lib/sysusers.d" \
+	"$STAGE/usr/lib/tmpfiles.d" \
 	"$STAGE/etc/ssh-alertd" \
 	"$STAGE/usr/share/doc/ssh-alertd"
 
@@ -30,6 +32,11 @@ mkdir -p "$STAGE/DEBIAN" \
 # the packaged binary lives in /usr/bin, so rewrite ExecStart.
 sed 's|/usr/local/bin/ssh-alertd|/usr/bin/ssh-alertd|' \
 	"$ROOT/deploy/ssh-alertd.service" > "$STAGE/lib/systemd/system/ssh-alertd.service"
+
+# Dedicated system user + config ownership (applied by postinst via
+# systemd-sysusers / systemd-tmpfiles).
+install -m644 "$ROOT/deploy/ssh-alertd.sysusers" "$STAGE/usr/lib/sysusers.d/ssh-alertd.conf"
+install -m644 "$ROOT/deploy/ssh-alertd.tmpfiles" "$STAGE/usr/lib/tmpfiles.d/ssh-alertd.conf"
 
 # Default config (registered as a conffile, mode 0640 to protect the token).
 install -m640 "$ROOT/config.example.json" "$STAGE/etc/ssh-alertd/config.json"

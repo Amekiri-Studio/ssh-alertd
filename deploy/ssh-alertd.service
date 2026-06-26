@@ -9,9 +9,12 @@ ExecStart=/usr/local/bin/ssh-alertd -config /etc/ssh-alertd/config.json
 Restart=on-failure
 RestartSec=5
 
-# Hardening. journald access needs the systemd-journal group; file mode needs
-# read access to the auth log instead.
-DynamicUser=yes
+# Runs as a dedicated system user (created via sysusers.d) that owns
+# /etc/ssh-alertd/config.json (set up by tmpfiles.d) and belongs to
+# systemd-journal so the journald log source works. For the "file" source, also
+# grant read access to the auth log (e.g. add group "adm" on Debian/Ubuntu).
+User=ssh-alertd
+Group=ssh-alertd
 SupplementaryGroups=systemd-journal
 NoNewPrivileges=yes
 ProtectSystem=strict

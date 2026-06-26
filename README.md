@@ -117,14 +117,22 @@ sudo ./ssh-alertd -config /etc/ssh-alertd/config.json
 ```sh
 sudo install -m0755 ssh-alertd /usr/local/bin/ssh-alertd
 sudo install -d /etc/ssh-alertd
-sudo install -m0600 config.example.json /etc/ssh-alertd/config.json   # then edit
+sudo install -m0640 config.example.json /etc/ssh-alertd/config.json   # then edit
 sudo install -m0644 deploy/ssh-alertd.service /etc/systemd/system/ssh-alertd.service
+
+# Create the dedicated ssh-alertd user and give it ownership of the config.
+sudo install -Dm644 deploy/ssh-alertd.sysusers /usr/lib/sysusers.d/ssh-alertd.conf
+sudo install -Dm644 deploy/ssh-alertd.tmpfiles /usr/lib/tmpfiles.d/ssh-alertd.conf
+sudo systemd-sysusers
+sudo systemd-tmpfiles --create
+
 sudo systemctl daemon-reload
 sudo systemctl enable --now ssh-alertd
 ```
 
-The journald source requires the `systemd-journal` group (already granted in the
-unit file). For the `file` source, ensure the service user can read the log.
+The service runs as the dedicated `ssh-alertd` user, which owns the config and
+belongs to `systemd-journal` for the journald source. For the `file` source,
+also grant it read access to the auth log (see Privileges below).
 
 ## 权限要求 (Privileges)
 
@@ -146,15 +154,26 @@ tail -n5 /var/log/auth.log                # file 源
 
 ### systemd 部署
 
-上文的单元文件用 `DynamicUser=yes` 以非 root 用户运行，并通过
-`SupplementaryGroups=systemd-journal` 授予读 journal 的权限——因此 **journald
-源下用 systemd 启动无需额外授权**。
+单元文件以**专用系统用户 `ssh-alertd`** 运行(由 `deploy/ssh-alertd.sysusers`
+经 systemd-sysusers 创建),并通过 `SupplementaryGroups=systemd-journal` 授予读
+journal 的权限——因此 **journald 源下用 systemd 启动无需额外授权**。该用户还通过
+`deploy/ssh-alertd.tmpfiles` 取得 `/etc/ssh-alertd/config.json` 的属主权,从而能读
+到 token(文件仍是 `0640`,其他本地用户读不到)。
 
-若改用 **file 源**，动态用户默认读不到 `auth.log`，需要把单元文件里的这一行换成
-日志文件所属的组，例如 Debian/Ubuntu:
+> Arch / Debian 包会自动安装这两个文件并触发 sysusers/tmpfiles。手动用 systemd
+> 部署时需自行执行一次:
+>
+> ```sh
+> sudo install -Dm644 deploy/ssh-alertd.sysusers /usr/lib/sysusers.d/ssh-alertd.conf
+> sudo install -Dm644 deploy/ssh-alertd.tmpfiles /usr/lib/tmpfiles.d/ssh-alertd.conf
+> sudo systemd-sysusers && sudo systemd-tmpfiles --create
+> ```
+
+若改用 **file 源**,`ssh-alertd` 用户默认读不到 `auth.log`,需要在单元里追加日志
+文件所属的组,例如 Debian/Ubuntu:
 
 ```ini
-SupplementaryGroups=adm
+SupplementaryGroups=systemd-journal adm
 ```
 
 ### 手动调试
