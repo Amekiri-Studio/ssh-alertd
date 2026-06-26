@@ -3,7 +3,7 @@ ssh-alertd (0.1.3) unstable; urgency=medium
   * Add GitHub Actions release automation (.deb amd64/arm64 + standalone
     tarballs published to the GitHub Release). No runtime changes.
 
- -- Amekiri Studio <noreply@amekiri.studio>  Fri, 26 Jun 2026 12:00:00 +0000
+ -- Amekiri Studio <info@amekiri.com>  Fri, 26 Jun 2026 12:00:00 +0000
 
 ssh-alertd (0.1.2) unstable; urgency=medium
 
@@ -11,7 +11,7 @@ ssh-alertd (0.1.2) unstable; urgency=medium
     systemd-sysusers/systemd-tmpfiles explicitly in postinst and add a chown
     fallback, so the daemon can read its token regardless of hook timing.
 
- -- Amekiri Studio <noreply@amekiri.studio>  Fri, 26 Jun 2026 11:40:00 +0000
+ -- Amekiri Studio <info@amekiri.com>  Fri, 26 Jun 2026 11:40:00 +0000
 
 ssh-alertd (0.1.1) unstable; urgency=medium
 
@@ -20,10 +20,10 @@ ssh-alertd (0.1.1) unstable; urgency=medium
     daemon can read its token. Fixes a startup failure with permission denied
     on /etc/ssh-alertd/config.json.
 
- -- Amekiri Studio <noreply@amekiri.studio>  Fri, 26 Jun 2026 11:30:00 +0000
+ -- Amekiri Studio <info@amekiri.com>  Fri, 26 Jun 2026 11:30:00 +0000
 
 ssh-alertd (0.1.0) unstable; urgency=medium
 
   * Initial release: modular SSH login alert daemon with Telegram notifier.
 
- -- Amekiri Studio <noreply@amekiri.studio>  Fri, 26 Jun 2026 00:00:00 +0000
+ -- Amekiri Studio <info@amekiri.com>  Fri, 26 Jun 2026 00:00:00 +0000

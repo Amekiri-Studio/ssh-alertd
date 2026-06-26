@@ -3,7 +3,7 @@ Version: @VERSION@
 Section: admin
 Priority: optional
 Architecture: @ARCH@
-Maintainer: Amekiri Studio <noreply@amekiri.studio>
+Maintainer: Amekiri Studio <info@amekiri.com>
 Depends: systemd
 Recommends: openssh-server
 Homepage: https://github.com/Amekiri-Studio/ssh-alertd
