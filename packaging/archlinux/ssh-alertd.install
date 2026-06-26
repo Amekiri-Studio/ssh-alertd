@@ -1,0 +1,9 @@
+post_install() {
+	echo ":: Edit /etc/ssh-alertd/config.json (set your Telegram bot_token & chat_id),"
+	echo "   then: systemctl enable --now ssh-alertd"
+	echo ":: The default config has mode 0640 and contains a placeholder token."
+}
+
+post_upgrade() {
+	post_install
+}
