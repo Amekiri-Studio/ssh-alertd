@@ -10,6 +10,16 @@
       "bot_token": "123456789:AAExampleBotTokenReplaceMe",
       "chat_id": "-1001234567890",
       "api_base": "https://api.telegram.org"
+    },
+    "smtp": {
+      "enabled": false,
+      "host": "smtp.example.com",
+      "port": 587,
+      "username": "alert@example.com",
+      "password": "your-smtp-password",
+      "from": "alert@example.com",
+      "to": ["admin@example.com"],
+      "encryption": "starttls"
     }
   }
 }
