@@ -1,5 +1,7 @@
 # ssh-alertd
 
+[![CI](https://github.com/Amekiri-Studio/ssh-alertd/actions/workflows/ci.yml/badge.svg)](https://github.com/Amekiri-Studio/ssh-alertd/actions/workflows/ci.yml)
+
 A small, modular SSH Alert Daemon written in Go. It watches `sshd` logs and, on
 every **successful** SSH login, sends an alert containing:
 
@@ -37,6 +39,22 @@ Data flow: `Source` (journald/file) â†’ `Monitor` parses "Accepted ..." lines â†
 go build -o ssh-alertd .
 go test ./...
 ```
+
+## Releases
+
+Pushing a `v*` tag triggers the [Release workflow](.github/workflows/release.yml),
+which builds and attaches to the GitHub Release:
+
+- `.deb` packages for `amd64` and `arm64`
+- standalone `linux-amd64` / `linux-arm64` tarballs (binary + unit + example config)
+- a `SHA256SUMS` checksum file
+
+```sh
+git tag -a v0.1.3 -m "v0.1.3" && git push --follow-tags
+```
+
+Keep the version in `packaging/archlinux/PKGBUILD` and
+`packaging/debian/changelog` in step with the tag.
 
 ## Configure
 

@@ -10,7 +10,9 @@ ROOT="$(cd "$HERE/../.." && pwd)"
 command -v dpkg-deb >/dev/null || { echo "error: dpkg-deb not found (install dpkg)" >&2; exit 1; }
 command -v go >/dev/null || { echo "error: go toolchain not found" >&2; exit 1; }
 
-ARCH="$(dpkg --print-architecture)"
+# ARCH may be overridden (e.g. in CI) to cross-build; for amd64/arm64 the Debian
+# architecture name matches GOARCH, so GOARCH defaults to it.
+ARCH="${ARCH:-$(dpkg --print-architecture)}"
 STAGE="$HERE/build/ssh-alertd_${VERSION}_${ARCH}"
 
 echo ":: building ssh-alertd $VERSION ($ARCH)"
@@ -25,8 +27,8 @@ mkdir -p "$STAGE/DEBIAN" \
 
 # Statically-linked Go binary so the package is portable across Debian releases
 # (no glibc version coupling); hence no libc6 dependency in control.
-( cd "$ROOT" && CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" \
-	-o "$STAGE/usr/bin/ssh-alertd" . )
+( cd "$ROOT" && CGO_ENABLED=0 GOARCH="${GOARCH:-$ARCH}" go build -trimpath \
+	-ldflags "-s -w" -o "$STAGE/usr/bin/ssh-alertd" . )
 
 # systemd unit: the shipped unit targets /usr/local/bin for manual installs;
 # the packaged binary lives in /usr/bin, so rewrite ExecStart.

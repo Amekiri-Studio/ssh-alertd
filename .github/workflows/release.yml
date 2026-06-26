@@ -1,0 +1,121 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to build without the leading v (e.g. 0.1.2)'
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  # Resolve the version once (from the tag, or the manual-dispatch input) and
+  # gate the build on tests passing.
+  meta:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+    steps:
+      - id: v
+        run: |
+          if [ -n "${{ github.event.inputs.version }}" ]; then
+            echo "version=${{ github.event.inputs.version }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+          fi
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - run: go vet ./...
+      - run: go test ./...
+
+  deb:
+    needs: [meta, test]
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        arch: [amd64, arm64]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Build .deb (${{ matrix.arch }})
+        env:
+          ARCH: ${{ matrix.arch }}
+        run: |
+          cd packaging/debian
+          ./build.sh "${{ needs.meta.outputs.version }}"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: deb-${{ matrix.arch }}
+          path: packaging/debian/*.deb
+          if-no-files-found: error
+
+  binaries:
+    needs: [meta, test]
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        arch: [amd64, arm64]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Build standalone tarball (${{ matrix.arch }})
+        env:
+          GOARCH: ${{ matrix.arch }}
+        run: |
+          V="${{ needs.meta.outputs.version }}"
+          name="ssh-alertd-${V}-linux-${{ matrix.arch }}"
+          mkdir -p "dist/$name"
+          CGO_ENABLED=0 GOARCH="${{ matrix.arch }}" go build -trimpath \
+            -ldflags "-s -w" -o "dist/$name/ssh-alertd" .
+          cp README.md LICENSE config.example.json "dist/$name/"
+          cp deploy/ssh-alertd.service deploy/ssh-alertd.sysusers \
+             deploy/ssh-alertd.tmpfiles "dist/$name/"
+          tar -C dist -czf "dist/${name}.tar.gz" "$name"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: binary-${{ matrix.arch }}
+          path: dist/*.tar.gz
+          if-no-files-found: error
+
+  release:
+    needs: [deb, binaries]
+    runs-on: ubuntu-latest
+    # Only publish a Release for real tag pushes, not manual dispatch test builds.
+    if: startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - name: Collect files and checksums
+        run: |
+          mkdir -p out
+          find artifacts -type f \( -name '*.deb' -o -name '*.tar.gz' \) \
+            -exec cp {} out/ \;
+          cd out
+          sha256sum * > SHA256SUMS
+          echo "::group::Release files"
+          ls -l
+          cat SHA256SUMS
+          echo "::endgroup::"
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: out/*
+          generate_release_notes: true
