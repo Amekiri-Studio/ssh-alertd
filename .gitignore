@@ -1,0 +1,23 @@
+# Local runtime config (contains bot token / chat id — never commit)
+config.json
+/etc/ssh-alertd/
+
+# Compiled binary / build output
+/ssh-alertd
+ssh-alertd
+*.exe
+/dist/
+/build/
+
+# Go test & coverage artifacts
+*.test
+*.out
+coverage.*
+
+# Editor / OS junk
+.vscode/
+.idea/
+*.swp
+*~
+.DS_Store
+Thumbs.db

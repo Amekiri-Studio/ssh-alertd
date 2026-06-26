@@ -1,0 +1,15 @@
+{
+  "hostname": "",
+  "log_source": {
+    "type": "journald",
+    "path": "/var/log/auth.log"
+  },
+  "notifiers": {
+    "telegram": {
+      "enabled": true,
+      "bot_token": "123456789:AAExampleBotTokenReplaceMe",
+      "chat_id": "-1001234567890",
+      "api_base": "https://api.telegram.org"
+    }
+  }
+}
