@@ -2,18 +2,20 @@
 
 [![CI](https://github.com/Amekiri-Studio/ssh-alertd/actions/workflows/ci.yml/badge.svg)](https://github.com/Amekiri-Studio/ssh-alertd/actions/workflows/ci.yml)
 
+**English** · [简体中文](docs/README.zh-CN.md) · [繁體中文](docs/README.zh-TW.md) · [日本語](docs/README.ja.md)
+
 A small, modular SSH Alert Daemon written in Go. It watches `sshd` logs and, on
 every **successful** SSH login, sends an alert containing:
 
-- Login **IP**(客户端来源 IP)
+- Login **IP** (the client's source IP)
 - Login **username**
 - **Time**
-- **Client port**(客户端来源端口,取自 sshd 日志 `from <IP> port <端口>`,
-  并非服务器监听端口 22)
+- **Client port** (the client's source port, taken from the sshd log line
+  `from <IP> port <port>` — not the server's listening port 22)
 
 Telegram is implemented today. The notifier layer is an interface, so WhatsApp,
-WeCom (企业微信), DingTalk (钉钉), Feishu (飞书) and SMTP can be added as
-self-contained files without touching the rest of the system.
+WeCom, DingTalk, Feishu and SMTP can be added as self-contained files without
+touching the rest of the system.
 
 ## Architecture
 
@@ -66,36 +68,40 @@ Telegram bot token and chat ID.
   Debian/Ubuntu or `/var/log/secure` on RHEL).
 - `hostname`: optional override; defaults to the OS hostname.
 
-### Telegram Bot 配置
+### Telegram Bot setup
 
-分三步:**建 Bot 拿 token → 拿 chat_id → 填进 `config.json`**。
+Three steps: **create the bot to get a token → get the chat_id → fill in
+`config.json`**.
 
-**1. 创建 Bot,获取 `bot_token`**
+**1. Create the bot and get `bot_token`**
 
-1. 在 Telegram 搜索官方机器人 **@BotFather**,开始对话。
-2. 发送 `/newbot`,依次填显示名称和用户名(用户名须以 `bot` 结尾,如
-   `my_ssh_alert_bot`)。
-3. BotFather 返回的 token 形如 `123456789:AAExxxxxxxxxxxxxxxxxxxxxxxxxx`,即
-   `bot_token`。
+1. In Telegram, search for the official **@BotFather** and start a chat.
+2. Send `/newbot` and provide a display name and a username (the username must
+   end in `bot`, e.g. `my_ssh_alert_bot`).
+3. BotFather returns a token like `123456789:AAExxxxxxxxxxxxxxxxxxxxxxxxxx` —
+   that is your `bot_token`.
 
-**2. 获取 `chat_id`**
+**2. Get `chat_id`**
 
-Bot 不能主动找你,必须你先给它发消息,它才拿得到会话 ID。
+A bot cannot message you first; you must message it before it can learn the
+chat ID.
 
-- 发到个人:搜索你的 bot → 点 **Start** → 随便发一句。
-- 发到群组(多人收警报):把 bot 拉进群,在群里发一句话。
+- To a private chat: search for your bot → tap **Start** → send any message.
+- To a group (for multiple recipients): add the bot to the group and send a
+  message there.
 
-然后浏览器访问(把 `<TOKEN>` 换成你的 token):
+Then open this URL in a browser (replace `<TOKEN>` with your token):
 
 ```
 https://api.telegram.org/bot<TOKEN>/getUpdates
 ```
 
-在返回 JSON 里找 `"chat":{"id":...}`。个人聊天是正数(如 `987654321`),
-群组是负数(超级群常以 `-100` 开头,如 `-1001234567890`)。
-若群里取不到更新,先在 BotFather 用 `/setprivacy` 关闭隐私模式后重发消息。
+Find `"chat":{"id":...}` in the returned JSON. A private chat is a positive
+number (e.g. `987654321`); a group is negative (supergroups often start with
+`-100`, e.g. `-1001234567890`). If a group returns no updates, disable privacy
+mode via `/setprivacy` in BotFather and send the message again.
 
-**3. 填写 `config.json`**
+**3. Fill in `config.json`**
 
 ```json
 "telegram": {
@@ -106,23 +112,27 @@ https://api.telegram.org/bot<TOKEN>/getUpdates
 }
 ```
 
-- `enabled` 必须为 `true`,否则该后端不注册(启动会因 "no notifiers enabled" 退出)。
-- `bot_token` / `chat_id` 都是**字符串**,注意引号;两者任一为空都会启动失败。
-- `api_base` 一般留默认;仅在需要走反向代理时修改(直连 `api.telegram.org`
-  受限的网络环境)。
+- `enabled` must be `true`, otherwise the backend is not registered (startup
+  exits with "no notifiers enabled").
+- `bot_token` / `chat_id` are both **strings** — mind the quotes; an empty value
+  for either fails startup.
+- `api_base` is usually left at the default; change it only when you need a
+  reverse proxy (networks where `api.telegram.org` is not reachable directly).
 
-**4. 验证**
+**4. Verify**
 
-先手动测一条,确认 token/chat_id 正确:
+Send one message by hand first to confirm the token/chat_id are correct:
 
 ```sh
 curl -s "https://api.telegram.org/bot<TOKEN>/sendMessage" \
   -d chat_id=<CHAT_ID> -d text="ssh-alertd test"
 ```
 
-返回 `"ok":true` 即配置正确,之后真实 SSH 登录一次便会收到报警。
+`"ok":true` means the config is correct; you will then receive an alert on the
+next real SSH login.
 
-> ⚠️ `config.json` 含 bot token,建议 `chmod 600` 并避免提交进 git。
+> ⚠️ `config.json` contains the bot token. Set `chmod 600` and keep it out of
+> git.
 
 ## Run
 
@@ -152,34 +162,37 @@ The service runs as the dedicated `ssh-alertd` user, which owns the config and
 belongs to `systemd-journal` for the journald source. For the `file` source,
 also grant it read access to the auth log (see Privileges below).
 
-## 权限要求 (Privileges)
+## Privileges
 
-ssh-alertd 本身**不需要完整 root**:它不监听端口、不写系统文件,只是**读 sshd
-登录日志**并向 Telegram 发出 HTTPS 请求。所需权限完全取决于读取日志的方式——
-而读取 SSH 认证日志在 Linux 上是受保护的操作。
+ssh-alertd itself does **not require full root**: it does not listen on a port
+or write system files — it only **reads sshd login logs** and makes HTTPS
+requests to Telegram. The privileges needed depend entirely on how the log is
+read, and reading SSH authentication logs is a protected operation on Linux.
 
-| 日志源 (`log_source.type`) | 读取对象 | 所需权限 |
+| Log source (`log_source.type`) | Reads | Privileges required |
 | --- | --- | --- |
-| `journald` (默认) | systemd journal | root，**或** 属于 `systemd-journal` 组 |
-| `file` | `/var/log/auth.log` (Debian/Ubuntu) `/var/log/secure` (RHEL) | root，**或** 对该文件有读权限的组（Debian/Ubuntu 通常是 `adm`） |
+| `journald` (default) | systemd journal | root, **or** membership in the `systemd-journal` group |
+| `file` | `/var/log/auth.log` (Debian/Ubuntu), `/var/log/secure` (RHEL) | root, **or** a group with read access to the file (usually `adm` on Debian/Ubuntu) |
 
-先用对应命令确认权限是否就绪——能看到输出，守护进程就能读到:
+Confirm access with the matching command first — if you can see output, the
+daemon can read it too:
 
 ```sh
-journalctl -t sshd -t sshd-session -n5    # journald 源
-tail -n5 /var/log/auth.log                # file 源
+journalctl -t sshd -t sshd-session -n5    # journald source
+tail -n5 /var/log/auth.log                # file source
 ```
 
-### systemd 部署
+### systemd deployment
 
-单元文件以**专用系统用户 `ssh-alertd`** 运行(由 `deploy/ssh-alertd.sysusers`
-经 systemd-sysusers 创建),并通过 `SupplementaryGroups=systemd-journal` 授予读
-journal 的权限——因此 **journald 源下用 systemd 启动无需额外授权**。该用户还通过
-`deploy/ssh-alertd.tmpfiles` 取得 `/etc/ssh-alertd/config.json` 的属主权,从而能读
-到 token(文件仍是 `0640`,其他本地用户读不到)。
+The unit runs as the dedicated system user **`ssh-alertd`** (created from
+`deploy/ssh-alertd.sysusers` by systemd-sysusers) and is granted read access to
+the journal via `SupplementaryGroups=systemd-journal` — so **the journald source
+needs no extra authorization when started via systemd**. That user also takes
+ownership of `/etc/ssh-alertd/config.json` via `deploy/ssh-alertd.tmpfiles`, so
+it can read the token (the file stays `0640`, unreadable to other local users).
 
-> Arch / Debian 包会自动安装这两个文件并触发 sysusers/tmpfiles。手动用 systemd
-> 部署时需自行执行一次:
+> The Arch / Debian packages install these two files and trigger
+> sysusers/tmpfiles automatically. For a manual systemd deployment, run once:
 >
 > ```sh
 > sudo install -Dm644 deploy/ssh-alertd.sysusers /usr/lib/sysusers.d/ssh-alertd.conf
@@ -187,76 +200,82 @@ journal 的权限——因此 **journald 源下用 systemd 启动无需额外授
 > sudo systemd-sysusers && sudo systemd-tmpfiles --create
 > ```
 
-若改用 **file 源**,`ssh-alertd` 用户默认读不到 `auth.log`,需要在单元里追加日志
-文件所属的组,例如 Debian/Ubuntu:
+For the **file** source, the `ssh-alertd` user cannot read `auth.log` by
+default; add the log file's group to the unit, e.g. on Debian/Ubuntu:
 
 ```ini
 SupplementaryGroups=systemd-journal adm
 ```
 
-### 手动调试
+### Manual debugging
 
-最简单的方式是直接用 root 运行:
+The simplest approach is to run as root directly:
 
 ```sh
 sudo ./ssh-alertd -config /etc/ssh-alertd/config.json
 ```
 
-或把当前用户加入对应组以避免 sudo（需重新登录使组生效）:
+Or add your current user to the relevant group to avoid sudo (re-login for the
+group to take effect):
 
 ```sh
-sudo usermod -aG systemd-journal $USER   # journald 源
-sudo usermod -aG adm $USER               # file 源 (Debian/Ubuntu)
+sudo usermod -aG systemd-journal $USER   # journald source
+sudo usermod -aG adm $USER               # file source (Debian/Ubuntu)
 ```
 
-## 故障排查 (Troubleshooting)
+## Troubleshooting
 
-ssh-alertd 把诊断信息打到 **stderr**(systemd 下用
-`journalctl -u ssh-alertd -f` 查看)。启动正常时应看到
-`enabled notifier: telegram` 和 `monitor started on source ...`;每次成功登录会有
-`detected SSH login: ...` 和 `notifier telegram delivered alert ...`。
+ssh-alertd writes diagnostics to **stderr** (view with
+`journalctl -u ssh-alertd -f` under systemd). A healthy start shows
+`enabled notifier: telegram` and `monitor started on source ...`; every
+successful login produces `detected SSH login: ...` and
+`notifier telegram delivered alert ...`.
 
-| 现象 | 可能原因 | 处理 |
+| Symptom | Likely cause | Fix |
 | --- | --- | --- |
-| 启动即退出 `no notifiers enabled` | `telegram.enabled` 不是 `true` | 改为 `true` |
-| 启动报 `telegram enabled but bot_token/chat_id is empty` | 凭据缺失 | 填上 `bot_token` / `chat_id`,注意是字符串 |
-| 启动报 `parse config ...` | JSON 语法错或多了未知字段 | 配置开了 `DisallowUnknownFields`,删掉拼错/多余的键,用 `config.example.json` 比对 |
-| 登录后**完全没有** `detected` 日志 | 日志源读不到 sshd | 见下方「读不到日志」 |
-| 有 `detected` 但 `notifier telegram failed` | Telegram 投递失败 | 见下方「收不到 Telegram」 |
+| Exits at startup with `no notifiers enabled` | `telegram.enabled` is not `true` | Set it to `true` |
+| Startup error `telegram enabled but bot_token/chat_id is empty` | Missing credentials | Fill in `bot_token` / `chat_id` (strings) |
+| Startup error `parse config ...` | JSON syntax error or unknown field | Config uses `DisallowUnknownFields`; remove typos/extra keys, compare against `config.example.json` |
+| **No** `detected` log after a login | Log source can't read sshd | See "No log lines" below |
+| `detected` present but `notifier telegram failed` | Telegram delivery failed | See "No Telegram message" below |
 
-**读不到日志(没有 `detected` 行)**
+**No log lines (no `detected`)**
 
-1. 先确认权限——能看到输出守护进程才能读到(见「权限要求」):
+1. Confirm access first — if you can see output, the daemon can read it (see
+   Privileges):
    ```sh
-   journalctl -t sshd -t sshd-session -n5    # journald 源
-   tail -n5 /var/log/auth.log                # file 源
+   journalctl -t sshd -t sshd-session -n5    # journald source
+   tail -n5 /var/log/auth.log                # file source
    ```
-2. 确认 sshd 真的在记登录日志:手动 `ssh localhost` 登一次,看上面命令是否出现
-   `Accepted password/publickey for ...`。
-3. `file` 源时检查 `log_source.path` 是否正确(Debian/Ubuntu 是
-   `/var/log/auth.log`,RHEL/CentOS 是 `/var/log/secure`)。
-4. 极少数发行版 sshd 的 syslog 标识既非 `sshd` 也非 `sshd-session`,journald 源会
-   过滤掉;此时改用 `file` 源。
+2. Confirm sshd is actually logging logins: `ssh localhost` once and check
+   whether `Accepted password/publickey for ...` appears in the command above.
+3. For the `file` source, check that `log_source.path` is correct
+   (`/var/log/auth.log` on Debian/Ubuntu, `/var/log/secure` on RHEL/CentOS).
+4. On a few distros sshd's syslog identifier is neither `sshd` nor
+   `sshd-session`, so the journald source filters it out; switch to the `file`
+   source.
 
-**收不到 Telegram(日志里有 `notifier telegram failed`)**
+**No Telegram message (`notifier telegram failed` in the log)**
 
-错误信息会带 Telegram API 的返回。常见:
+The error includes the Telegram API response. Common cases:
 
-- `status 401` / `404`:`bot_token` 错或写反 —— 重新从 BotFather 核对。
-- `status 400 ... chat not found`:`chat_id` 错,或你还没给 bot 发过消息 ——
-  先 Start/发消息,再用 `getUpdates` 重新取 id;群组 id 是负数,别丢 `-100` 前缀。
-- `status 403 ... bot was blocked`:你把 bot 拉黑了 —— 解除拉黑。
-- `send request: ... timeout / no such host`:服务器到 `api.telegram.org` 不通
-  (网络受限)—— 配置 `api_base` 指向你的反向代理。
+- `status 401` / `404`: wrong `bot_token` — re-check it with BotFather.
+- `status 400 ... chat not found`: wrong `chat_id`, or you never messaged the
+  bot — Start/message it, then fetch the id again via `getUpdates`; a group id is
+  negative, don't drop the `-100` prefix.
+- `status 403 ... bot was blocked`: you blocked the bot — unblock it.
+- `send request: ... timeout / no such host`: the server can't reach
+  `api.telegram.org` (restricted network) — set `api_base` to your reverse proxy.
 
-先用 curl 单测可快速区分是「凭据问题」还是「程序问题」:
+A quick curl test separates a "credential problem" from a "program problem":
 
 ```sh
 curl -s "https://api.telegram.org/bot<TOKEN>/sendMessage" \
   -d chat_id=<CHAT_ID> -d text="ssh-alertd test"
 ```
 
-返回 `"ok":true` 说明凭据没问题;`"ok":false` 时 `description` 字段会说明原因。
+`"ok":true` means the credentials are fine; on `"ok":false` the `description`
+field explains why.
 
 ## Adding a new notifier
 
