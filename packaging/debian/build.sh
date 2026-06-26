@@ -3,7 +3,7 @@
 # Usage: ./build.sh [version]   (default version: 0.1.0)
 set -euo pipefail
 
-VERSION="${1:-0.1.1}"
+VERSION="${1:-0.1.2}"
 HERE="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$HERE/../.." && pwd)"
 

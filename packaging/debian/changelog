@@ -1,3 +1,11 @@
+ssh-alertd (0.1.2) unstable; urgency=medium
+
+  * Reliably chown the config to the ssh-alertd user on install: run
+    systemd-sysusers/systemd-tmpfiles explicitly in postinst and add a chown
+    fallback, so the daemon can read its token regardless of hook timing.
+
+ -- Amekiri Studio <noreply@amekiri.studio>  Fri, 26 Jun 2026 11:40:00 +0000
+
 ssh-alertd (0.1.1) unstable; urgency=medium
 
   * Run as a dedicated "ssh-alertd" system user (sysusers.d) instead of
