@@ -227,3 +227,8 @@ curl -s "https://api.telegram.org/bot<TOKEN>/sendMessage" \
    interface (`Name()` and `Send(ctx, event.LoginEvent) error`).
 2. Add its config struct to `internal/config/config.go`.
 3. Register it in `buildNotifiers` in `main.go`.
+
+## License
+
+Licensed under the Apache License, Version 2.0. See [LICENSE](LICENSE) for the
+full text.
