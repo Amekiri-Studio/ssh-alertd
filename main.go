@@ -71,7 +71,15 @@ func buildNotifiers(cfg *config.Config, logger *log.Logger) []notifier.Notifier 
 		logger.Printf("enabled notifier: telegram")
 	}
 
-	// Future backends (whatsapp, wecom, dingtalk, feishu, smtp) register here.
+	if cfg.Notifiers.SMTP.Enabled {
+		s := cfg.Notifiers.SMTP
+		ns = append(ns, notifier.NewSMTP(
+			s.Host, s.Port, s.Username, s.Password, s.From, s.To, s.Encryption,
+		))
+		logger.Printf("enabled notifier: smtp")
+	}
+
+	// Future backends (whatsapp, wecom, dingtalk, feishu) register here.
 
 	return ns
 }

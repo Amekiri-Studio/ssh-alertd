@@ -13,9 +13,9 @@ every **successful** SSH login, sends an alert containing:
 - **Client port** (the client's source port, taken from the sshd log line
   `from <IP> port <port>` — not the server's listening port 22)
 
-Telegram is implemented today. The notifier layer is an interface, so WhatsApp,
-WeCom, DingTalk, Feishu and SMTP can be added as self-contained files without
-touching the rest of the system.
+Telegram and SMTP are implemented today. The notifier layer is an interface, so
+WhatsApp, WeCom, DingTalk and Feishu can be added as self-contained files
+without touching the rest of the system.
 
 ## Architecture
 
@@ -30,6 +30,7 @@ internal/
   notifier/
     notifier.go               Notifier interface + concurrent Dispatcher
     telegram.go               Telegram Bot backend (one file per backend)
+    smtp.go                   SMTP (email) backend
 ```
 
 Data flow: `Source` (journald/file) → `Monitor` parses "Accepted ..." lines →
@@ -133,6 +134,36 @@ next real SSH login.
 
 > ⚠️ `config.json` contains the bot token. Set `chmod 600` and keep it out of
 > git.
+
+### SMTP (email) setup
+
+Add an `smtp` block under `notifiers` to receive alerts by email. This is handy
+on networks where Telegram is unreachable, since it talks to your own mail
+server directly.
+
+```json
+"smtp": {
+  "enabled": true,
+  "host": "smtp.example.com",
+  "port": 587,
+  "username": "alert@example.com",
+  "password": "your-smtp-password",
+  "from": "alert@example.com",
+  "to": ["admin@example.com"],
+  "encryption": "starttls"
+}
+```
+
+- `encryption`: `starttls` (default, typically port 587), `tls` (implicit
+  TLS / SMTPS, typically port 465), or `none` (port 25, no transport security).
+- `port`: optional — defaults to `465` for `tls`, otherwise `587`.
+- `username` / `password`: optional; omit `username` to skip authentication
+  (e.g. an internal relay). When set, `PLAIN` auth is used (so always over TLS).
+- `to`: one or more recipients; at least one is required.
+- Multiple notifiers can be enabled at once — each enabled backend gets every
+  alert independently.
+
+Telegram and SMTP are independent: enabling one does not require the other.
 
 ## Run
 
