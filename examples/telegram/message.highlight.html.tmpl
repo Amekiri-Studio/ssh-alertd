@@ -1,0 +1,10 @@
+{{if eq .Method "password"}}🔴{{else}}🟢{{end}} <b>SSH Login</b> on {{.Hostname}}
+
+<b>User:</b> <code>{{.Username}}</code>
+<b>From:</b> <code>{{.IP}}:{{.Port}}</code>
+<b>Method:</b> <code>{{.Method}}</code>
+<b>Time:</b> <code>{{.Time.Format "2006-01-02 15:04:05 MST"}}</code>
+{{- if eq .Method "password"}}
+
+⚠️ <b>Password authentication</b> — consider switching to key-based login.
+{{- end}}

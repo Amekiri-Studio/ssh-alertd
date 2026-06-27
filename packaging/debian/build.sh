@@ -3,7 +3,7 @@
 # Usage: ./build.sh [version]   (default version: 0.1.0)
 set -euo pipefail
 
-VERSION="${1:-0.1.3}"
+VERSION="${1:-0.2.0}"
 HERE="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$HERE/../.." && pwd)"
 
@@ -42,6 +42,15 @@ install -m644 "$ROOT/deploy/ssh-alertd.tmpfiles" "$STAGE/usr/lib/tmpfiles.d/ssh-
 
 # Default config (registered as a conffile, mode 0640 to protect the token).
 install -m640 "$ROOT/config.example.json" "$STAGE/etc/ssh-alertd/config.json"
+
+# Example email/Telegram templates (read-only reference under /usr/share).
+# nullglob so a source tree without examples/ is skipped, not a literal glob.
+mkdir -p "$STAGE/usr/share/ssh-alertd/templates"
+shopt -s nullglob
+for tmpl in "$ROOT"/examples/email/*.tmpl "$ROOT"/examples/telegram/*.tmpl; do
+	install -m644 "$tmpl" "$STAGE/usr/share/ssh-alertd/templates/$(basename "$tmpl")"
+done
+shopt -u nullglob
 
 # Documentation (Debian policy: README, copyright, gzipped changelog).
 install -m644 "$ROOT/README.md"   "$STAGE/usr/share/doc/ssh-alertd/README.md"

@@ -1,3 +1,15 @@
+ssh-alertd (0.2.0) unstable; urgency=medium
+
+  * Add SMTP (email) notifier with customizable subject/body templates
+    (inline or via *_template_file, text or HTML) and example templates.
+  * Add customizable Telegram message template (message_template /
+    message_template_file, parse_mode HTML/MarkdownV2/Markdown/none) plus
+    example templates.
+  * Ship example templates under /usr/share/ssh-alertd/templates/.
+  * Documentation in English, Simplified/Traditional Chinese and Japanese.
+
+ -- Amekiri Studio <info@amekiri.com>  Sat, 27 Jun 2026 12:00:00 +0000
+
 ssh-alertd (0.1.3) unstable; urgency=medium
 
   * Add GitHub Actions release automation (.deb amd64/arm64 + standalone

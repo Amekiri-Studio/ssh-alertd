@@ -1,0 +1,13 @@
+SSH Login Alert
+===============
+
+A successful SSH login was detected on {{.Hostname}}.
+
+  User:        {{.Username}}
+  From IP:     {{.IP}}
+  Client port: {{.Port}}
+  Method:      {{.Method}}
+  Host:        {{.Hostname}}
+  Time:        {{.Time.Format "2006-01-02 15:04:05 MST"}}
+
+Sent by ssh-alertd. If this wasn't you, investigate immediately.

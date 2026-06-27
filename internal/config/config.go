@@ -38,17 +38,17 @@ type LogSourceConfig struct {
 	Path string `json:"path"`
 }
 
-// NotifiersConfig groups all notifier backends. Only Telegram is implemented
-// today; the remaining fields are placeholders so the schema is stable as new
-// backends land.
+// NotifiersConfig groups all notifier backends. Telegram and SMTP are
+// implemented today; the remaining fields are placeholders so the schema is
+// stable as new backends land.
 type NotifiersConfig struct {
 	Telegram TelegramConfig `json:"telegram"`
+	SMTP     SMTPConfig     `json:"smtp"`
 	// Reserved for future backends.
 	WhatsApp map[string]any `json:"whatsapp,omitempty"`
 	WeCom    map[string]any `json:"wecom,omitempty"`
 	DingTalk map[string]any `json:"dingtalk,omitempty"`
 	Feishu   map[string]any `json:"feishu,omitempty"`
-	SMTP     map[string]any `json:"smtp,omitempty"`
 }
 
 // TelegramConfig holds the Telegram Bot API credentials.
@@ -59,6 +59,47 @@ type TelegramConfig struct {
 	// APIBase optionally overrides the Telegram API endpoint, useful behind a
 	// reverse proxy. Defaults to https://api.telegram.org when empty.
 	APIBase string `json:"api_base"`
+	// MessageTemplate is an optional Go template for the message text (fields
+	// .Username .IP .Port .Method .Hostname .Time). Empty uses the built-in
+	// HTML format.
+	MessageTemplate string `json:"message_template"`
+	// MessageTemplateFile, when set, is read as the message template and takes
+	// precedence over MessageTemplate — convenient for multi-line messages.
+	MessageTemplateFile string `json:"message_template_file"`
+	// ParseMode is "HTML" (default), "MarkdownV2", "Markdown" or "none"; it
+	// applies to a custom MessageTemplate. The built-in format is always HTML.
+	ParseMode string `json:"parse_mode"`
+}
+
+// SMTPConfig holds the settings for sending alerts over SMTP (email).
+type SMTPConfig struct {
+	Enabled  bool   `json:"enabled"`
+	Host     string `json:"host"`
+	Port     int    `json:"port"`
+	Username string `json:"username"`
+	Password string `json:"password"`
+	// From is the envelope/header sender address.
+	From string `json:"from"`
+	// To is the list of recipient addresses (at least one).
+	To []string `json:"to"`
+	// Encryption selects the transport security: "starttls" (default, typically
+	// port 587), "tls" (implicit TLS / SMTPS, typically port 465) or "none".
+	Encryption string `json:"encryption"`
+
+	// SubjectTemplate is an optional Go text/template for the email subject.
+	// Templates receive the login event with fields .Username .IP .Port .Method
+	// .Hostname .Time (e.g. {{.Username}}, {{.Time.Format "2006-01-02 15:04:05"}}).
+	// Empty uses the built-in subject.
+	SubjectTemplate string `json:"subject_template"`
+	// BodyTemplate is an optional Go template for the email body (same fields as
+	// SubjectTemplate). Empty uses the built-in body.
+	BodyTemplate string `json:"body_template"`
+	// BodyTemplateFile, when set, is read as the body template and takes
+	// precedence over BodyTemplate — convenient for multi-line bodies.
+	BodyTemplateFile string `json:"body_template_file"`
+	// HTML renders the body as text/html (using html/template for auto-escaping)
+	// instead of text/plain. Pair it with a BodyTemplate.
+	HTML bool `json:"html"`
 }
 
 // Load reads, parses and validates the config file at path.
@@ -92,6 +133,25 @@ func (c *Config) applyDefaults() {
 	if c.Notifiers.Telegram.APIBase == "" {
 		c.Notifiers.Telegram.APIBase = "https://api.telegram.org"
 	}
+	if c.Notifiers.Telegram.ParseMode == "" {
+		c.Notifiers.Telegram.ParseMode = "HTML"
+	}
+
+	smtp := &c.Notifiers.SMTP
+	if smtp.Encryption == "" {
+		if smtp.Port == 465 {
+			smtp.Encryption = "tls"
+		} else {
+			smtp.Encryption = "starttls"
+		}
+	}
+	if smtp.Port == 0 {
+		if smtp.Encryption == "tls" {
+			smtp.Port = 465
+		} else {
+			smtp.Port = 587
+		}
+	}
 }
 
 func (c *Config) validate() error {
@@ -108,6 +168,30 @@ func (c *Config) validate() error {
 		}
 		if c.Notifiers.Telegram.ChatID == "" {
 			return fmt.Errorf("telegram enabled but chat_id is empty")
+		}
+		switch c.Notifiers.Telegram.ParseMode {
+		case "HTML", "MarkdownV2", "Markdown", "none":
+		default:
+			return fmt.Errorf("telegram parse_mode %q is invalid (want HTML, MarkdownV2, Markdown or none)",
+				c.Notifiers.Telegram.ParseMode)
+		}
+	}
+
+	if c.Notifiers.SMTP.Enabled {
+		s := c.Notifiers.SMTP
+		switch s.Encryption {
+		case "starttls", "tls", "none":
+		default:
+			return fmt.Errorf("smtp enabled but encryption %q is invalid (want starttls, tls or none)", s.Encryption)
+		}
+		if s.Host == "" {
+			return fmt.Errorf("smtp enabled but host is empty")
+		}
+		if s.From == "" {
+			return fmt.Errorf("smtp enabled but from is empty")
+		}
+		if len(s.To) == 0 {
+			return fmt.Errorf("smtp enabled but to is empty")
 		}
 	}
 	return nil

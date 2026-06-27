@@ -19,6 +19,8 @@ pkg/
 src/
 *.pkg.tar.*
 *.src.tar.*
+# makepkg-downloaded source tarball (source=(...::...tar.gz))
+packaging/archlinux/*.tar.gz
 
 # deb build artifacts
 packaging/debian/build/

@@ -13,9 +13,9 @@ every **successful** SSH login, sends an alert containing:
 - **Client port** (the client's source port, taken from the sshd log line
   `from <IP> port <port>` — not the server's listening port 22)
 
-Telegram is implemented today. The notifier layer is an interface, so WhatsApp,
-WeCom, DingTalk, Feishu and SMTP can be added as self-contained files without
-touching the rest of the system.
+Telegram and SMTP are implemented today. The notifier layer is an interface, so
+WhatsApp, WeCom, DingTalk and Feishu can be added as self-contained files
+without touching the rest of the system.
 
 ## Architecture
 
@@ -30,6 +30,7 @@ internal/
   notifier/
     notifier.go               Notifier interface + concurrent Dispatcher
     telegram.go               Telegram Bot backend (one file per backend)
+    smtp.go                   SMTP (email) backend
 ```
 
 Data flow: `Source` (journald/file) → `Monitor` parses "Accepted ..." lines →
@@ -133,6 +134,106 @@ next real SSH login.
 
 > ⚠️ `config.json` contains the bot token. Set `chmod 600` and keep it out of
 > git.
+
+#### Custom message (optional)
+
+By default the message uses a built-in HTML format. To customize the text, set
+`message_template` (a [Go template](https://pkg.go.dev/text/template) with the
+same event fields as SMTP: `.Username` `.IP` `.Port` `.Method` `.Hostname`
+`.Time`):
+
+```json
+"telegram": {
+  "enabled": true,
+  "bot_token": "123456789:AAExampleBotTokenReplaceMe",
+  "chat_id": "-1001234567890",
+  "message_template": "🔐 <b>{{.Username}}</b> logged in from <code>{{.IP}}</code> on {{.Hostname}}",
+  "parse_mode": "HTML"
+}
+```
+
+- `message_template`: empty (default) uses the built-in HTML format.
+- `message_template_file`: a path read as the message template; it takes
+  precedence over `message_template` and is handy for multi-line messages.
+- `parse_mode`: `HTML` (default), `MarkdownV2`, `Markdown`, or `none` (plain
+  text). With `HTML`, event fields are auto-escaped (via `html/template`) so a
+  value like a username can't break the markup; with the other modes you are
+  responsible for any escaping the format requires.
+
+> Telegram's "HTML" supports only a small set of inline tags (`<b> <i> <code>
+> <pre> <a>` …) — there is no layout or color, so keep templates to formatted
+> text.
+
+Ready-to-use examples live in [`examples/telegram/`](examples/telegram/).
+
+### SMTP (email) setup
+
+Add an `smtp` block under `notifiers` to receive alerts by email. This is handy
+on networks where Telegram is unreachable, since it talks to your own mail
+server directly.
+
+```json
+"smtp": {
+  "enabled": true,
+  "host": "smtp.example.com",
+  "port": 587,
+  "username": "alert@example.com",
+  "password": "your-smtp-password",
+  "from": "alert@example.com",
+  "to": ["admin@example.com"],
+  "encryption": "starttls"
+}
+```
+
+- `encryption`: `starttls` (default, typically port 587), `tls` (implicit
+  TLS / SMTPS, typically port 465), or `none` (port 25, no transport security).
+- `port`: optional — defaults to `465` for `tls`, otherwise `587`.
+- `username` / `password`: optional; omit `username` to skip authentication
+  (e.g. an internal relay). When set, `PLAIN` auth is used (so always over TLS).
+- `to`: one or more recipients; at least one is required.
+- Multiple notifiers can be enabled at once — each enabled backend gets every
+  alert independently.
+
+Telegram and SMTP are independent: enabling one does not require the other.
+
+#### Custom email templates
+
+The subject and body can be customized with [Go templates](https://pkg.go.dev/text/template).
+Templates receive the login event with these fields:
+
+| Field | Example |
+| --- | --- |
+| `.Username` | `alice` |
+| `.IP` | `203.0.113.5` |
+| `.Port` | `50568` (client source port) |
+| `.Method` | `publickey` / `password` |
+| `.Hostname` | `web-01` |
+| `.Time` | a `time.Time`; format with `{{.Time.Format "2006-01-02 15:04:05"}}` |
+
+```json
+"smtp": {
+  "enabled": true,
+  "host": "smtp.example.com",
+  "from": "alert@example.com",
+  "to": ["admin@example.com"],
+  "subject_template": "[ALERT] SSH login {{.Username}}@{{.Hostname}}",
+  "body_template": "{{.Username}} logged in from {{.IP}}:{{.Port}} via {{.Method}} at {{.Time.Format \"2006-01-02 15:04:05\"}}",
+  "html": false
+}
+```
+
+- `subject_template` / `body_template`: inline Go templates. Empty values use the
+  built-in subject and body.
+- `body_template_file`: a path read as the body template; it takes precedence
+  over `body_template` and is handy for multi-line or HTML bodies.
+- `html: true` renders the body as `text/html` (using `html/template`, which
+  auto-escapes the event fields); pair it with a `body_template`.
+
+Templates are compiled at startup, so a malformed template fails fast with a
+clear error rather than silently dropping alerts.
+
+Ready-to-use HTML and plain-text examples live in
+[`examples/email/`](examples/email/).
 
 ## Run
 

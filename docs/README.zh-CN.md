@@ -11,7 +11,7 @@
 - **时间**
 - **客户端端口**（客户端的来源端口，取自 sshd 日志行 `from <IP> port <port>`——而非服务器的监听端口 22）
 
-目前已实现 Telegram。通知后端层是一个接口，因此 WhatsApp、企业微信、钉钉、飞书和 SMTP 都可以作为自包含的文件添加进来，而无需改动系统的其余部分。
+目前已实现 Telegram 和 SMTP。通知后端层是一个接口，因此 WhatsApp、企业微信、钉钉和飞书都可以作为自包含的文件添加进来，而无需改动系统的其余部分。
 
 ## 架构
 
@@ -26,6 +26,7 @@ internal/
   notifier/
     notifier.go               Notifier interface + concurrent Dispatcher
     telegram.go               Telegram Bot backend (one file per backend)
+    smtp.go                   SMTP (email) backend
 ```
 
 数据流：`Source`（journald/file）→ `Monitor` 解析 "Accepted ..." 行 → `Dispatcher` 将每个 `LoginEvent` 并发地分发给所有已启用的 `Notifier`。
@@ -110,6 +111,87 @@ curl -s "https://api.telegram.org/bot<TOKEN>/sendMessage" \
 `"ok":true` 表示配置正确；之后你将在下一次真实的 SSH 登录时收到告警。
 
 > ⚠️ `config.json` 包含 bot token。请设置 `chmod 600` 并将其排除在 git 之外。
+
+#### 自定义消息（可选）
+
+默认情况下，消息使用内置的 HTML 格式。如需自定义文本，请设置 `message_template`（一个 [Go 模板](https://pkg.go.dev/text/template)，其事件字段与 SMTP 相同：`.Username` `.IP` `.Port` `.Method` `.Hostname` `.Time`）：
+
+```json
+"telegram": {
+  "enabled": true,
+  "bot_token": "123456789:AAExampleBotTokenReplaceMe",
+  "chat_id": "-1001234567890",
+  "message_template": "🔐 <b>{{.Username}}</b> logged in from <code>{{.IP}}</code> on {{.Hostname}}",
+  "parse_mode": "HTML"
+}
+```
+
+- `message_template`：留空（默认）则使用内置的 HTML 格式。
+- `message_template_file`：作为消息模板读取的文件路径；它的优先级高于 `message_template`，便于编写多行消息。
+- `parse_mode`：`HTML`（默认）、`MarkdownV2`、`Markdown` 或 `none`（纯文本）。在 `HTML` 模式下，事件字段会被自动转义（通过 `html/template`），因此像用户名这样的值不会破坏标记；在其他模式下，则需由你自己负责该格式所要求的任何转义。
+
+> Telegram 的 "HTML" 仅支持一小组内联标签（`<b> <i> <code> <pre> <a>` 等）——没有布局或颜色，因此请将模板限制为带格式的文本。
+
+开箱即用的示例位于 [`examples/telegram/`](../examples/telegram/)。
+
+### SMTP（邮件）配置
+
+在 `notifiers` 下添加一个 `smtp` 块即可通过电子邮件接收告警。这在 Telegram 无法访问的网络中很方便，因为它会直接与你自己的邮件服务器通信。
+
+```json
+"smtp": {
+  "enabled": true,
+  "host": "smtp.example.com",
+  "port": 587,
+  "username": "alert@example.com",
+  "password": "your-smtp-password",
+  "from": "alert@example.com",
+  "to": ["admin@example.com"],
+  "encryption": "starttls"
+}
+```
+
+- `encryption`：`starttls`（默认，通常使用 `port` `587`）、`tls`（隐式 TLS / SMTPS，通常使用 `port` `465`）或 `none`（`port` 25，无传输层安全）。
+- `port`：可选——对于 `tls` 默认为 `465`，否则为 `587`。
+- `username` / `password`：可选；省略 `username` 可跳过认证（例如内部中继）。设置后将使用 `PLAIN` 认证（因此务必通过 TLS）。
+- `to`：一个或多个收件人；至少需要一个。
+- 可以同时启用多个通知后端——每个已启用的后端都会独立地收到每一条告警。
+
+Telegram 和 SMTP 相互独立：启用其中一个并不要求启用另一个。
+
+#### 自定义邮件模板
+
+主题和正文可以用 [Go 模板](https://pkg.go.dev/text/template) 自定义。
+模板会接收登录事件，包含以下字段：
+
+| 字段 | 示例 |
+| --- | --- |
+| `.Username` | `alice` |
+| `.IP` | `203.0.113.5` |
+| `.Port` | `50568`（客户端来源端口） |
+| `.Method` | `publickey` / `password` |
+| `.Hostname` | `web-01` |
+| `.Time` | 一个 `time.Time`；用 `{{.Time.Format "2006-01-02 15:04:05"}}` 格式化 |
+
+```json
+"smtp": {
+  "enabled": true,
+  "host": "smtp.example.com",
+  "from": "alert@example.com",
+  "to": ["admin@example.com"],
+  "subject_template": "[ALERT] SSH login {{.Username}}@{{.Hostname}}",
+  "body_template": "{{.Username}} logged in from {{.IP}}:{{.Port}} via {{.Method}} at {{.Time.Format \"2006-01-02 15:04:05\"}}",
+  "html": false
+}
+```
+
+- `subject_template` / `body_template`：内联的 Go 模板。留空则使用内置的主题和正文。
+- `body_template_file`：作为正文模板读取的文件路径；它的优先级高于 `body_template`，便于编写多行或 HTML 正文。
+- `html: true` 会将正文渲染为 `text/html`（使用 `html/template`，它会自动转义事件字段）；请与 `body_template` 搭配使用。
+
+模板在启动时编译，因此格式错误的模板会立即以清晰的错误信息失败，而不会悄无声息地丢弃告警。
+
+开箱即用的 HTML 和纯文本示例位于 [`examples/email/`](../examples/email/)。
 
 ## 运行
 

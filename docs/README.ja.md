@@ -12,8 +12,8 @@ Go で書かれた、小規模でモジュール化された SSH アラートデ
 - **クライアントポート**（クライアントの送信元ポート。sshd のログ行
   `from <IP> port <port>` から取得したもので、サーバーが待ち受けるポート 22 ではありません）
 
-現在は Telegram が実装されています。通知層はインターフェースになっているため、WhatsApp、
-WeCom、DingTalk、Feishu、SMTP を、システムの他の部分に手を加えることなく
+現在は Telegram と SMTP が実装されています。通知層はインターフェースになっているため、WhatsApp、
+WeCom、DingTalk、Feishu を、システムの他の部分に手を加えることなく
 独立したファイルとして追加できます。
 
 ## アーキテクチャ
@@ -29,6 +29,7 @@ internal/
   notifier/
     notifier.go               Notifier interface + concurrent Dispatcher
     telegram.go               Telegram Bot backend (one file per backend)
+    smtp.go                   SMTP (email) backend
 ```
 
 データフロー: `Source`（journald/file）→ `Monitor` が "Accepted ..." 行を解析 →
@@ -132,6 +133,91 @@ curl -s "https://api.telegram.org/bot<TOKEN>/sendMessage" \
 
 > ⚠️ `config.json` にはボットトークンが含まれます。`chmod 600` を設定し、
 > git の管理対象外にしてください。
+
+#### メッセージのカスタマイズ(任意)
+
+デフォルトでは、メッセージは組み込みの HTML 形式を使います。テキストをカスタマイズするには、`message_template`（SMTP と同じイベントフィールド `.Username` `.IP` `.Port` `.Method` `.Hostname` `.Time` を持つ [Go テンプレート](https://pkg.go.dev/text/template)）を設定します。
+
+```json
+"telegram": {
+  "enabled": true,
+  "bot_token": "123456789:AAExampleBotTokenReplaceMe",
+  "chat_id": "-1001234567890",
+  "message_template": "🔐 <b>{{.Username}}</b> logged in from <code>{{.IP}}</code> on {{.Hostname}}",
+  "parse_mode": "HTML"
+}
+```
+
+- `message_template`: 空（デフォルト）の場合は組み込みの HTML 形式が使われます。
+- `message_template_file`: メッセージテンプレートとして読み込まれるパス。`message_template` より優先され、複数行のメッセージに便利です。
+- `parse_mode`: `HTML`（デフォルト）、`MarkdownV2`、`Markdown`、または `none`（プレーンテキスト）。`HTML` の場合、イベントフィールドは自動エスケープされる（`html/template` 経由）ため、ユーザー名のような値がマークアップを壊すことはありません。その他のモードでは、その形式が必要とするエスケープは自分で行う責任があります。
+
+> Telegram の「HTML」は、ごく一部のインラインタグ（`<b> <i> <code> <pre> <a>` など）しかサポートしません。レイアウトや色はないため、テンプレートは書式付きテキストにとどめてください。
+
+すぐに使える例は [`examples/telegram/`](../examples/telegram/) にあります。
+
+### SMTP(メール)のセットアップ
+
+メールでアラートを受信するには、`notifiers` の下に `smtp` ブロックを追加します。
+自前のメールサーバーに直接通信するため、Telegram に到達できないネットワークでも便利です。
+
+```json
+"smtp": {
+  "enabled": true,
+  "host": "smtp.example.com",
+  "port": 587,
+  "username": "alert@example.com",
+  "password": "your-smtp-password",
+  "from": "alert@example.com",
+  "to": ["admin@example.com"],
+  "encryption": "starttls"
+}
+```
+
+- `encryption`: `starttls`（デフォルト。通常は `port` `587`）、`tls`（暗黙的な
+  TLS / SMTPS。通常は `port` `465`）、または `none`（`port` 25。トランスポートの暗号化なし）。
+- `port`: 任意。`tls` の場合は `465`、それ以外の場合は `587` がデフォルトです。
+- `username` / `password`: 任意。`username` を省略すると認証をスキップします
+  （例: 内部リレー）。設定した場合は `PLAIN` 認証が使われます（そのため必ず TLS 上で行ってください）。
+- `to`: 1 つ以上の宛先。少なくとも 1 つが必要です。
+- 複数の通知バックエンドを同時に有効化できます。有効な各バックエンドは、すべての
+  アラートを独立して受け取ります。
+
+Telegram と SMTP は独立しています。一方を有効にしても、もう一方は必要ありません。
+
+#### メールテンプレートのカスタマイズ
+
+件名と本文は [Go テンプレート](https://pkg.go.dev/text/template)でカスタマイズできます。
+テンプレートには、以下のフィールドを持つログインイベントが渡されます。
+
+| フィールド | 例 |
+| --- | --- |
+| `.Username` | `alice` |
+| `.IP` | `203.0.113.5` |
+| `.Port` | `50568`（クライアントの送信元ポート） |
+| `.Method` | `publickey` / `password` |
+| `.Hostname` | `web-01` |
+| `.Time` | `time.Time`。`{{.Time.Format "2006-01-02 15:04:05"}}` で書式化します |
+
+```json
+"smtp": {
+  "enabled": true,
+  "host": "smtp.example.com",
+  "from": "alert@example.com",
+  "to": ["admin@example.com"],
+  "subject_template": "[ALERT] SSH login {{.Username}}@{{.Hostname}}",
+  "body_template": "{{.Username}} logged in from {{.IP}}:{{.Port}} via {{.Method}} at {{.Time.Format \"2006-01-02 15:04:05\"}}",
+  "html": false
+}
+```
+
+- `subject_template` / `body_template`: インラインの Go テンプレート。空の値の場合は、組み込みの件名と本文が使われます。
+- `body_template_file`: 本文テンプレートとして読み込まれるパス。`body_template` より優先され、複数行や HTML の本文に便利です。
+- `html: true` は本文を `text/html` としてレンダリングします（`html/template` を使い、イベントフィールドを自動エスケープします）。`body_template` と組み合わせて使ってください。
+
+テンプレートは起動時にコンパイルされるため、不正なテンプレートはアラートを黙って取りこぼすのではなく、明確なエラーで即座に失敗します。
+
+すぐに使える HTML およびプレーンテキストの例は [`examples/email/`](../examples/email/) にあります。
 
 ## 実行
 
