@@ -59,6 +59,16 @@ type TelegramConfig struct {
 	// APIBase optionally overrides the Telegram API endpoint, useful behind a
 	// reverse proxy. Defaults to https://api.telegram.org when empty.
 	APIBase string `json:"api_base"`
+	// MessageTemplate is an optional Go template for the message text (fields
+	// .Username .IP .Port .Method .Hostname .Time). Empty uses the built-in
+	// HTML format.
+	MessageTemplate string `json:"message_template"`
+	// MessageTemplateFile, when set, is read as the message template and takes
+	// precedence over MessageTemplate — convenient for multi-line messages.
+	MessageTemplateFile string `json:"message_template_file"`
+	// ParseMode is "HTML" (default), "MarkdownV2", "Markdown" or "none"; it
+	// applies to a custom MessageTemplate. The built-in format is always HTML.
+	ParseMode string `json:"parse_mode"`
 }
 
 // SMTPConfig holds the settings for sending alerts over SMTP (email).
@@ -123,6 +133,9 @@ func (c *Config) applyDefaults() {
 	if c.Notifiers.Telegram.APIBase == "" {
 		c.Notifiers.Telegram.APIBase = "https://api.telegram.org"
 	}
+	if c.Notifiers.Telegram.ParseMode == "" {
+		c.Notifiers.Telegram.ParseMode = "HTML"
+	}
 
 	smtp := &c.Notifiers.SMTP
 	if smtp.Encryption == "" {
@@ -155,6 +168,12 @@ func (c *Config) validate() error {
 		}
 		if c.Notifiers.Telegram.ChatID == "" {
 			return fmt.Errorf("telegram enabled but chat_id is empty")
+		}
+		switch c.Notifiers.Telegram.ParseMode {
+		case "HTML", "MarkdownV2", "Markdown", "none":
+		default:
+			return fmt.Errorf("telegram parse_mode %q is invalid (want HTML, MarkdownV2, Markdown or none)",
+				c.Notifiers.Telegram.ParseMode)
 		}
 	}
 

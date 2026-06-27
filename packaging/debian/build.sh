@@ -45,7 +45,7 @@ install -m640 "$ROOT/config.example.json" "$STAGE/etc/ssh-alertd/config.json"
 
 # Example email templates (read-only reference under /usr/share).
 mkdir -p "$STAGE/usr/share/ssh-alertd/templates"
-for tmpl in "$ROOT"/examples/email/*.tmpl; do
+for tmpl in "$ROOT"/examples/email/*.tmpl "$ROOT"/examples/telegram/*.tmpl; do
 	install -m644 "$tmpl" "$STAGE/usr/share/ssh-alertd/templates/$(basename "$tmpl")"
 done
 

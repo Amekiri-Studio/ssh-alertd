@@ -6,52 +6,148 @@ import (
 	"encoding/json"
 	"fmt"
 	"html"
+	htmltemplate "html/template"
 	"io"
 	"net/http"
 	"strings"
+	texttemplate "text/template"
 	"time"
 
 	"ssh-alertd/internal/event"
 )
 
-// Telegram delivers alerts through the Telegram Bot API (sendMessage).
-type Telegram struct {
-	botToken string
-	chatID   string
-	apiBase  string
-	client   *http.Client
+// Telegram parse modes.
+const (
+	tgParseHTML       = "HTML"
+	tgParseMarkdownV2 = "MarkdownV2"
+	tgParseMarkdown   = "Markdown"
+	tgParseNone       = "none" // plain text, no formatting
+)
+
+// TelegramOptions configures a Telegram notifier.
+type TelegramOptions struct {
+	BotToken string
+	ChatID   string
+	APIBase  string
+	// MessageTemplate is an optional Go template for the message text. Empty
+	// uses the built-in HTML format. Templates receive the login event
+	// (.Username .IP .Port .Method .Hostname .Time).
+	MessageTemplate string
+	// ParseMode is "HTML" (default), "MarkdownV2", "Markdown" or "none". It
+	// applies to a custom MessageTemplate; the built-in format is always HTML.
+	ParseMode string
 }
 
-// NewTelegram builds a Telegram notifier. apiBase may be empty, in which case
-// the public Telegram endpoint is used.
-func NewTelegram(botToken, chatID, apiBase string) *Telegram {
+// Telegram delivers alerts through the Telegram Bot API (sendMessage).
+type Telegram struct {
+	botToken  string
+	chatID    string
+	apiBase   string
+	parseMode string // value sent to Telegram ("" = plain)
+	client    *http.Client
+
+	render renderFunc
+}
+
+// NewTelegram builds a Telegram notifier and compiles any custom template up
+// front so template errors surface at startup. apiBase may be empty (defaults
+// to the public Telegram endpoint).
+func NewTelegram(o TelegramOptions) (*Telegram, error) {
+	apiBase := o.APIBase
 	if apiBase == "" {
 		apiBase = "https://api.telegram.org"
 	}
-	return &Telegram{
-		botToken: botToken,
-		chatID:   chatID,
-		apiBase:  strings.TrimRight(apiBase, "/"),
-		client:   &http.Client{Timeout: 15 * time.Second},
+
+	render, reqParseMode, err := buildTelegramRenderer(o.MessageTemplate, o.ParseMode)
+	if err != nil {
+		return nil, fmt.Errorf("message_template: %w", err)
 	}
+
+	return &Telegram{
+		botToken:  o.BotToken,
+		chatID:    o.ChatID,
+		apiBase:   strings.TrimRight(apiBase, "/"),
+		parseMode: reqParseMode,
+		client:    &http.Client{Timeout: 15 * time.Second},
+		render:    render,
+	}, nil
 }
 
 // Name implements Notifier.
 func (t *Telegram) Name() string { return "telegram" }
 
+// buildTelegramRenderer compiles the message renderer and resolves the parse
+// mode actually sent to Telegram. An empty template uses the built-in HTML
+// format regardless of parseMode. For a custom template, "HTML" uses
+// html/template so event fields are auto-escaped; other modes use text/template
+// (the author is responsible for any required escaping).
+func buildTelegramRenderer(tmpl, parseMode string) (renderFunc, string, error) {
+	if tmpl == "" {
+		return func(e event.LoginEvent) (string, error) {
+			return defaultTelegramHTML(e), nil
+		}, tgParseHTML, nil
+	}
+
+	switch parseMode {
+	case tgParseHTML, "":
+		t, err := htmltemplate.New("telegram").Parse(tmpl)
+		if err != nil {
+			return nil, "", err
+		}
+		return func(e event.LoginEvent) (string, error) {
+			var b strings.Builder
+			if err := t.Execute(&b, e); err != nil {
+				return "", err
+			}
+			return b.String(), nil
+		}, tgParseHTML, nil
+	case tgParseMarkdownV2, tgParseMarkdown:
+		t, err := texttemplate.New("telegram").Parse(tmpl)
+		if err != nil {
+			return nil, "", err
+		}
+		return func(e event.LoginEvent) (string, error) {
+			var b strings.Builder
+			if err := t.Execute(&b, e); err != nil {
+				return "", err
+			}
+			return b.String(), nil
+		}, parseMode, nil
+	case tgParseNone:
+		t, err := texttemplate.New("telegram").Parse(tmpl)
+		if err != nil {
+			return nil, "", err
+		}
+		return func(e event.LoginEvent) (string, error) {
+			var b strings.Builder
+			if err := t.Execute(&b, e); err != nil {
+				return "", err
+			}
+			return b.String(), nil
+		}, "", nil
+	default:
+		return nil, "", fmt.Errorf("invalid parse_mode %q (want HTML, MarkdownV2, Markdown or none)", parseMode)
+	}
+}
+
 // sendMessageRequest mirrors the subset of Telegram's sendMessage payload we use.
 type sendMessageRequest struct {
 	ChatID    string `json:"chat_id"`
 	Text      string `json:"text"`
-	ParseMode string `json:"parse_mode"`
+	ParseMode string `json:"parse_mode,omitempty"`
 }
 
-// Send implements Notifier by POSTing an HTML-formatted message.
+// Send implements Notifier by POSTing the rendered message.
 func (t *Telegram) Send(ctx context.Context, e event.LoginEvent) error {
+	text, err := t.render(e)
+	if err != nil {
+		return fmt.Errorf("render message: %w", err)
+	}
+
 	payload := sendMessageRequest{
 		ChatID:    t.chatID,
-		Text:      t.format(e),
-		ParseMode: "HTML",
+		Text:      text,
+		ParseMode: t.parseMode,
 	}
 	body, err := json.Marshal(payload)
 	if err != nil {
@@ -78,9 +174,9 @@ func (t *Telegram) Send(ctx context.Context, e event.LoginEvent) error {
 	return nil
 }
 
-// format renders the event as Telegram HTML. User-controlled fields are
-// escaped to avoid breaking the markup or injecting tags.
-func (t *Telegram) format(e event.LoginEvent) string {
+// defaultTelegramHTML renders the built-in Telegram HTML message. User-controlled
+// fields are escaped to avoid breaking the markup or injecting tags.
+func defaultTelegramHTML(e event.LoginEvent) string {
 	esc := html.EscapeString
 	return fmt.Sprintf(
 		"🔐 <b>SSH Login Alert</b>\n\n"+

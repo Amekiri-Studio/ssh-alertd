@@ -56,7 +56,7 @@ package() {
 
 	# Example email templates (read-only reference; point smtp.body_template_file
 	# at one of these, or copy to /etc/ssh-alertd/templates/ to customize).
-	for tmpl in examples/email/*.tmpl; do
+	for tmpl in examples/email/*.tmpl examples/telegram/*.tmpl; do
 		install -Dm644 "$tmpl" \
 			"$pkgdir/usr/share/$pkgname/templates/$(basename "$tmpl")"
 	done
