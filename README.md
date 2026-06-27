@@ -201,6 +201,9 @@ Templates receive the login event with these fields:
 Templates are compiled at startup, so a malformed template fails fast with a
 clear error rather than silently dropping alerts.
 
+Ready-to-use HTML and plain-text examples live in
+[`examples/email/`](examples/email/).
+
 ## Run
 
 ```sh
