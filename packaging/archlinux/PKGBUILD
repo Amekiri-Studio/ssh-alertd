@@ -54,6 +54,13 @@ package() {
 	# Default config (registered in backup= so pacman keeps local edits)
 	install -Dm640 config.example.json "$pkgdir/etc/ssh-alertd/config.json"
 
+	# Example email templates (read-only reference; point smtp.body_template_file
+	# at one of these, or copy to /etc/ssh-alertd/templates/ to customize).
+	for tmpl in examples/email/*.tmpl; do
+		install -Dm644 "$tmpl" \
+			"$pkgdir/usr/share/$pkgname/templates/$(basename "$tmpl")"
+	done
+
 	# Docs & license
 	install -Dm644 README.md "$pkgdir/usr/share/doc/$pkgname/README.md"
 	install -Dm644 config.example.json \

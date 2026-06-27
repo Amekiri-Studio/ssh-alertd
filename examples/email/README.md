@@ -31,7 +31,7 @@ The highlight template uses a conditional on `.Method`:
   "to": ["admin@example.com"],
   "encryption": "starttls",
   "subject_template": "[ssh-alertd] SSH login {{.Username}}@{{.Hostname}} from {{.IP}}",
-  "body_template_file": "/etc/ssh-alertd/templates/body.html.tmpl",
+  "body_template_file": "/usr/share/ssh-alertd/templates/body.html.tmpl",
   "html": true
 }
 ```
@@ -45,14 +45,29 @@ The highlight template uses a conditional on `.Method`:
   "from": "alert@example.com",
   "to": ["admin@example.com"],
   "subject_template": "[ssh-alertd] SSH login {{.Username}}@{{.Hostname}}",
-  "body_template_file": "/etc/ssh-alertd/templates/body.txt.tmpl",
+  "body_template_file": "/usr/share/ssh-alertd/templates/body.txt.tmpl",
   "html": false
 }
 ```
 
-Install the template where the daemon can read it, e.g.:
+## Where the templates live
+
+The `.deb` / Arch packages and the release tarballs ship these files, so
+`body_template_file` can point straight at them — no copying needed:
+
+| Install method | Template path |
+| --- | --- |
+| `.deb` / Arch (`.pkg.tar.zst`) | `/usr/share/ssh-alertd/templates/` |
+| release `tar.gz` | `templates/` next to the binary |
+| building from source | install one yourself, e.g. below |
+
+To customize, copy one into `/etc/ssh-alertd/templates/` (which won't be
+overwritten on upgrade) and point `body_template_file` there:
 
 ```sh
+sudo install -Dm644 /usr/share/ssh-alertd/templates/body.highlight.html.tmpl \
+  /etc/ssh-alertd/templates/body.html.tmpl
+# or, building from source:
 sudo install -Dm644 examples/email/body.html.tmpl /etc/ssh-alertd/templates/body.html.tmpl
 ```
 

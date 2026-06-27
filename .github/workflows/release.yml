@@ -87,6 +87,8 @@ jobs:
           cp README.md LICENSE config.example.json "dist/$name/"
           cp deploy/ssh-alertd.service deploy/ssh-alertd.sysusers \
              deploy/ssh-alertd.tmpfiles "dist/$name/"
+          mkdir -p "dist/$name/templates"
+          cp examples/email/*.tmpl "dist/$name/templates/"
           tar -C dist -czf "dist/${name}.tar.gz" "$name"
       - uses: actions/upload-artifact@v4
         with:
