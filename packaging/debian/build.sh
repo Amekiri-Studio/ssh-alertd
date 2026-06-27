@@ -43,6 +43,12 @@ install -m644 "$ROOT/deploy/ssh-alertd.tmpfiles" "$STAGE/usr/lib/tmpfiles.d/ssh-
 # Default config (registered as a conffile, mode 0640 to protect the token).
 install -m640 "$ROOT/config.example.json" "$STAGE/etc/ssh-alertd/config.json"
 
+# Example email templates (read-only reference under /usr/share).
+mkdir -p "$STAGE/usr/share/ssh-alertd/templates"
+for tmpl in "$ROOT"/examples/email/*.tmpl; do
+	install -m644 "$tmpl" "$STAGE/usr/share/ssh-alertd/templates/$(basename "$tmpl")"
+done
+
 # Documentation (Debian policy: README, copyright, gzipped changelog).
 install -m644 "$ROOT/README.md"   "$STAGE/usr/share/doc/ssh-alertd/README.md"
 install -m644 "$HERE/copyright"   "$STAGE/usr/share/doc/ssh-alertd/copyright"
