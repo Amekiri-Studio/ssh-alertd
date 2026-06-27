@@ -66,11 +66,17 @@ func buildNotifiers(cfg *config.Config, logger *log.Logger) ([]notifier.Notifier
 	var ns []notifier.Notifier
 
 	if cfg.Notifiers.Telegram.Enabled {
-		tg := notifier.NewTelegram(
-			cfg.Notifiers.Telegram.BotToken,
-			cfg.Notifiers.Telegram.ChatID,
-			cfg.Notifiers.Telegram.APIBase,
-		)
+		t := cfg.Notifiers.Telegram
+		tg, err := notifier.NewTelegram(notifier.TelegramOptions{
+			BotToken:        t.BotToken,
+			ChatID:          t.ChatID,
+			APIBase:         t.APIBase,
+			MessageTemplate: t.MessageTemplate,
+			ParseMode:       t.ParseMode,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("telegram: %w", err)
+		}
 		ns = append(ns, tg)
 		logger.Printf("enabled notifier: telegram")
 	}

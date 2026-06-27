@@ -135,6 +135,33 @@ next real SSH login.
 > ⚠️ `config.json` contains the bot token. Set `chmod 600` and keep it out of
 > git.
 
+#### Custom message (optional)
+
+By default the message uses a built-in HTML format. To customize the text, set
+`message_template` (a [Go template](https://pkg.go.dev/text/template) with the
+same event fields as SMTP: `.Username` `.IP` `.Port` `.Method` `.Hostname`
+`.Time`):
+
+```json
+"telegram": {
+  "enabled": true,
+  "bot_token": "123456789:AAExampleBotTokenReplaceMe",
+  "chat_id": "-1001234567890",
+  "message_template": "🔐 <b>{{.Username}}</b> logged in from <code>{{.IP}}</code> on {{.Hostname}}",
+  "parse_mode": "HTML"
+}
+```
+
+- `message_template`: empty (default) uses the built-in HTML format.
+- `parse_mode`: `HTML` (default), `MarkdownV2`, `Markdown`, or `none` (plain
+  text). With `HTML`, event fields are auto-escaped (via `html/template`) so a
+  value like a username can't break the markup; with the other modes you are
+  responsible for any escaping the format requires.
+
+> Telegram's "HTML" supports only a small set of inline tags (`<b> <i> <code>
+> <pre> <a>` …) — there is no layout or color, so keep templates to formatted
+> text.
+
 ### SMTP (email) setup
 
 Add an `smtp` block under `notifiers` to receive alerts by email. This is handy
