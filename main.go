@@ -67,11 +67,22 @@ func buildNotifiers(cfg *config.Config, logger *log.Logger) ([]notifier.Notifier
 
 	if cfg.Notifiers.Telegram.Enabled {
 		t := cfg.Notifiers.Telegram
+
+		// A message template file, when set, overrides the inline template.
+		message := t.MessageTemplate
+		if t.MessageTemplateFile != "" {
+			data, err := os.ReadFile(t.MessageTemplateFile)
+			if err != nil {
+				return nil, fmt.Errorf("telegram message_template_file: %w", err)
+			}
+			message = string(data)
+		}
+
 		tg, err := notifier.NewTelegram(notifier.TelegramOptions{
 			BotToken:        t.BotToken,
 			ChatID:          t.ChatID,
 			APIBase:         t.APIBase,
-			MessageTemplate: t.MessageTemplate,
+			MessageTemplate: message,
 			ParseMode:       t.ParseMode,
 		})
 		if err != nil {

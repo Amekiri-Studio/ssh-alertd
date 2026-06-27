@@ -63,6 +63,9 @@ type TelegramConfig struct {
 	// .Username .IP .Port .Method .Hostname .Time). Empty uses the built-in
 	// HTML format.
 	MessageTemplate string `json:"message_template"`
+	// MessageTemplateFile, when set, is read as the message template and takes
+	// precedence over MessageTemplate — convenient for multi-line messages.
+	MessageTemplateFile string `json:"message_template_file"`
 	// ParseMode is "HTML" (default), "MarkdownV2", "Markdown" or "none"; it
 	// applies to a custom MessageTemplate. The built-in format is always HTML.
 	ParseMode string `json:"parse_mode"`

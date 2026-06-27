@@ -11,6 +11,7 @@
       "chat_id": "-1001234567890",
       "api_base": "https://api.telegram.org",
       "message_template": "",
+      "message_template_file": "",
       "parse_mode": "HTML"
     },
     "smtp": {

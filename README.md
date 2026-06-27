@@ -153,6 +153,8 @@ same event fields as SMTP: `.Username` `.IP` `.Port` `.Method` `.Hostname`
 ```
 
 - `message_template`: empty (default) uses the built-in HTML format.
+- `message_template_file`: a path read as the message template; it takes
+  precedence over `message_template` and is handy for multi-line messages.
 - `parse_mode`: `HTML` (default), `MarkdownV2`, `Markdown`, or `none` (plain
   text). With `HTML`, event fields are auto-escaped (via `html/template`) so a
   value like a username can't break the markup; with the other modes you are
@@ -161,6 +163,8 @@ same event fields as SMTP: `.Username` `.IP` `.Port` `.Method` `.Hostname`
 > Telegram's "HTML" supports only a small set of inline tags (`<b> <i> <code>
 > <pre> <a>` …) — there is no layout or color, so keep templates to formatted
 > text.
+
+Ready-to-use examples live in [`examples/telegram/`](examples/telegram/).
 
 ### SMTP (email) setup
 
