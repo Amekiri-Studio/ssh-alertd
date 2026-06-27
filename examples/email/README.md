@@ -7,7 +7,16 @@ notifier. Templates receive the login event: `.Username` `.IP` `.Port`
 | File | Use with |
 | --- | --- |
 | [`body.html.tmpl`](body.html.tmpl) | `"html": true` — a styled HTML alert card |
+| [`body.highlight.html.tmpl`](body.highlight.html.tmpl) | `"html": true` — HTML card that turns **red for `password`** logins (with a warning) and **green for key-based** logins |
 | [`body.txt.tmpl`](body.txt.tmpl) | `"html": false` — a plain-text alert |
+
+The highlight template uses a conditional on `.Method`:
+
+```html
+{{- $danger := eq .Method "password" -}}
+... style="background:{{if $danger}}#dc2626{{else}}#16a34a{{end}};" ...
+{{if $danger}}⚠️ Password authentication was used.{{else}}✅ Key-based authentication.{{end}}
+```
 
 ## HTML email
 
