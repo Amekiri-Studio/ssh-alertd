@@ -164,6 +164,40 @@ curl -s "https://api.telegram.org/bot<TOKEN>/sendMessage" \
 
 Telegram 與 SMTP 彼此獨立：啟用其中一個並不需要另一個。
 
+#### 自訂郵件範本
+
+主旨與內文可以使用 [Go 範本](https://pkg.go.dev/text/template)進行自訂。
+範本會接收登入事件，並提供以下欄位：
+
+| 欄位 | 範例 |
+| --- | --- |
+| `.Username` | `alice` |
+| `.IP` | `203.0.113.5` |
+| `.Port` | `50568`（用戶端的來源連接埠） |
+| `.Method` | `publickey` / `password` |
+| `.Hostname` | `web-01` |
+| `.Time` | 一個 `time.Time`；可用 `{{.Time.Format "2006-01-02 15:04:05"}}` 格式化 |
+
+```json
+"smtp": {
+  "enabled": true,
+  "host": "smtp.example.com",
+  "from": "alert@example.com",
+  "to": ["admin@example.com"],
+  "subject_template": "[ALERT] SSH login {{.Username}}@{{.Hostname}}",
+  "body_template": "{{.Username}} logged in from {{.IP}}:{{.Port}} via {{.Method}} at {{.Time.Format \"2006-01-02 15:04:05\"}}",
+  "html": false
+}
+```
+
+- `subject_template` / `body_template`：行內 Go 範本。留空則使用內建的主旨與內文。
+- `body_template_file`：作為內文範本讀取的檔案路徑；它的優先順序高於 `body_template`，適合用於多行或 HTML 內文。
+- `html: true` 會將內文以 `text/html` 呈現（使用 `html/template`，它會自動跳脫事件欄位）；請搭配 `body_template` 一起使用。
+
+範本會在啟動時編譯，因此格式錯誤的範本會立即以清楚的錯誤訊息失敗，而不會默默地遺漏警示。
+
+可直接使用的 HTML 與純文字範例位於 [`examples/email/`](../examples/email/)。
+
 ## 執行
 
 ```sh
