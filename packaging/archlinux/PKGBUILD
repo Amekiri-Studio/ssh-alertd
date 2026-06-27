@@ -1,6 +1,6 @@
 # Maintainer: Amekiri Studio <info@amekiri.com>
 pkgname=ssh-alertd
-pkgver=0.1.3
+pkgver=0.2.0
 pkgrel=1
 pkgdesc="SSH Alert Daemon: sends an alert (Telegram, ...) on every successful SSH login"
 arch=('x86_64' 'aarch64')
