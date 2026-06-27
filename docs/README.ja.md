@@ -134,6 +134,28 @@ curl -s "https://api.telegram.org/bot<TOKEN>/sendMessage" \
 > ⚠️ `config.json` にはボットトークンが含まれます。`chmod 600` を設定し、
 > git の管理対象外にしてください。
 
+#### メッセージのカスタマイズ(任意)
+
+デフォルトでは、メッセージは組み込みの HTML 形式を使います。テキストをカスタマイズするには、`message_template`（SMTP と同じイベントフィールド `.Username` `.IP` `.Port` `.Method` `.Hostname` `.Time` を持つ [Go テンプレート](https://pkg.go.dev/text/template)）を設定します。
+
+```json
+"telegram": {
+  "enabled": true,
+  "bot_token": "123456789:AAExampleBotTokenReplaceMe",
+  "chat_id": "-1001234567890",
+  "message_template": "🔐 <b>{{.Username}}</b> logged in from <code>{{.IP}}</code> on {{.Hostname}}",
+  "parse_mode": "HTML"
+}
+```
+
+- `message_template`: 空（デフォルト）の場合は組み込みの HTML 形式が使われます。
+- `message_template_file`: メッセージテンプレートとして読み込まれるパス。`message_template` より優先され、複数行のメッセージに便利です。
+- `parse_mode`: `HTML`（デフォルト）、`MarkdownV2`、`Markdown`、または `none`（プレーンテキスト）。`HTML` の場合、イベントフィールドは自動エスケープされる（`html/template` 経由）ため、ユーザー名のような値がマークアップを壊すことはありません。その他のモードでは、その形式が必要とするエスケープは自分で行う責任があります。
+
+> Telegram の「HTML」は、ごく一部のインラインタグ（`<b> <i> <code> <pre> <a>` など）しかサポートしません。レイアウトや色はないため、テンプレートは書式付きテキストにとどめてください。
+
+すぐに使える例は [`examples/telegram/`](../examples/telegram/) にあります。
+
 ### SMTP(メール)のセットアップ
 
 メールでアラートを受信するには、`notifiers` の下に `smtp` ブロックを追加します。

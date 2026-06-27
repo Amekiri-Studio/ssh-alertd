@@ -135,6 +135,28 @@ curl -s "https://api.telegram.org/bot<TOKEN>/sendMessage" \
 > ⚠️ `config.json` 包含 bot token。請設定 `chmod 600` 並將其排除於
 > git 之外。
 
+#### 自訂訊息（可選）
+
+預設情況下，訊息會使用內建的 HTML 格式。若要自訂文字，請設定 `message_template`（一個與 SMTP 採用相同事件欄位的 [Go 範本](https://pkg.go.dev/text/template)：`.Username` `.IP` `.Port` `.Method` `.Hostname` `.Time`）：
+
+```json
+"telegram": {
+  "enabled": true,
+  "bot_token": "123456789:AAExampleBotTokenReplaceMe",
+  "chat_id": "-1001234567890",
+  "message_template": "🔐 <b>{{.Username}}</b> logged in from <code>{{.IP}}</code> on {{.Hostname}}",
+  "parse_mode": "HTML"
+}
+```
+
+- `message_template`：留空（預設）則使用內建的 HTML 格式。
+- `message_template_file`：作為訊息範本讀取的檔案路徑；它的優先順序高於 `message_template`，適合用於多行訊息。
+- `parse_mode`：`HTML`（預設）、`MarkdownV2`、`Markdown`，或 `none`（純文字）。使用 `HTML` 時，事件欄位會自動跳脫（透過 `html/template`），因此像使用者名稱這類的值不會破壞標記；使用其他模式時，該格式所需的任何跳脫都由你自行負責。
+
+> Telegram 的「HTML」僅支援一小組行內標籤（`<b> <i> <code> <pre> <a>` …）——沒有版面配置或色彩，因此請將範本維持為已格式化的文字。
+
+可直接使用的範例位於 [`examples/telegram/`](../examples/telegram/)。
+
 ### SMTP（郵件）設定
 
 在 `notifiers` 底下加入一個 `smtp` 區塊，即可透過電子郵件接收警示。
