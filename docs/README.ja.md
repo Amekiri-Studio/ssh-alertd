@@ -163,6 +163,40 @@ curl -s "https://api.telegram.org/bot<TOKEN>/sendMessage" \
 
 Telegram と SMTP は独立しています。一方を有効にしても、もう一方は必要ありません。
 
+#### メールテンプレートのカスタマイズ
+
+件名と本文は [Go テンプレート](https://pkg.go.dev/text/template)でカスタマイズできます。
+テンプレートには、以下のフィールドを持つログインイベントが渡されます。
+
+| フィールド | 例 |
+| --- | --- |
+| `.Username` | `alice` |
+| `.IP` | `203.0.113.5` |
+| `.Port` | `50568`（クライアントの送信元ポート） |
+| `.Method` | `publickey` / `password` |
+| `.Hostname` | `web-01` |
+| `.Time` | `time.Time`。`{{.Time.Format "2006-01-02 15:04:05"}}` で書式化します |
+
+```json
+"smtp": {
+  "enabled": true,
+  "host": "smtp.example.com",
+  "from": "alert@example.com",
+  "to": ["admin@example.com"],
+  "subject_template": "[ALERT] SSH login {{.Username}}@{{.Hostname}}",
+  "body_template": "{{.Username}} logged in from {{.IP}}:{{.Port}} via {{.Method}} at {{.Time.Format \"2006-01-02 15:04:05\"}}",
+  "html": false
+}
+```
+
+- `subject_template` / `body_template`: インラインの Go テンプレート。空の値の場合は、組み込みの件名と本文が使われます。
+- `body_template_file`: 本文テンプレートとして読み込まれるパス。`body_template` より優先され、複数行や HTML の本文に便利です。
+- `html: true` は本文を `text/html` としてレンダリングします（`html/template` を使い、イベントフィールドを自動エスケープします）。`body_template` と組み合わせて使ってください。
+
+テンプレートは起動時にコンパイルされるため、不正なテンプレートはアラートを黙って取りこぼすのではなく、明確なエラーで即座に失敗します。
+
+すぐに使える HTML およびプレーンテキストの例は [`examples/email/`](../examples/email/) にあります。
+
 ## 実行
 
 ```sh

@@ -1,0 +1,42 @@
+{{- $danger := eq .Method "password" -}}
+<!DOCTYPE html>
+<html lang="en">
+<body style="margin:0;padding:0;background:#f4f5f7;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f4f5f7;padding:24px 0;">
+    <tr><td align="center">
+      <table role="presentation" width="480" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:8px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.08);">
+        <tr><td style="background:{{if $danger}}#b91c1c{{else}}#15803d{{end}};padding:16px 24px;color:#ffffff;font-size:16px;font-weight:600;">
+          🔐 SSH Login Alert
+        </td></tr>
+        <tr><td style="padding:20px 24px;color:#111827;font-size:14px;">
+          <p style="margin:0 0 16px;color:#374151;">
+            A successful SSH login was detected on <strong>{{.Hostname}}</strong>
+            via
+            <span style="display:inline-block;padding:2px 10px;border-radius:9999px;font-size:12px;font-weight:600;color:#ffffff;background:{{if $danger}}#dc2626{{else}}#16a34a{{end}};">{{.Method}}</span>
+          </p>
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="font-size:14px;">
+            <tr><td style="padding:6px 0;color:#6b7280;width:120px;">User</td><td style="padding:6px 0;color:#111827;"><strong>{{.Username}}</strong></td></tr>
+            <tr><td style="padding:6px 0;color:#6b7280;">From IP</td><td style="padding:6px 0;color:#111827;">{{.IP}}</td></tr>
+            <tr><td style="padding:6px 0;color:#6b7280;">Client port</td><td style="padding:6px 0;color:#111827;">{{.Port}}</td></tr>
+            <tr><td style="padding:6px 0;color:#6b7280;">Method</td><td style="padding:6px 0;color:{{if $danger}}#dc2626{{else}}#16a34a{{end}};font-weight:600;">{{.Method}}</td></tr>
+            <tr><td style="padding:6px 0;color:#6b7280;">Time</td><td style="padding:6px 0;color:#111827;">{{.Time.Format "2006-01-02 15:04:05 MST"}}</td></tr>
+          </table>
+          {{if $danger}}
+          <p style="margin:16px 0 0;padding:10px 12px;background:#fef2f2;border-left:3px solid #dc2626;color:#991b1b;font-size:13px;">
+            ⚠️ Password authentication was used. Consider switching to key-based
+            login and disabling <code>PasswordAuthentication</code>.
+          </p>
+          {{else}}
+          <p style="margin:16px 0 0;padding:10px 12px;background:#f0fdf4;border-left:3px solid #16a34a;color:#166534;font-size:13px;">
+            ✅ Key-based authentication was used.
+          </p>
+          {{end}}
+        </td></tr>
+        <tr><td style="padding:14px 24px;background:#f9fafb;color:#9ca3af;font-size:12px;">
+          Sent by ssh-alertd. If this wasn&#39;t you, investigate immediately.
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>

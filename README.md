@@ -165,6 +165,45 @@ server directly.
 
 Telegram and SMTP are independent: enabling one does not require the other.
 
+#### Custom email templates
+
+The subject and body can be customized with [Go templates](https://pkg.go.dev/text/template).
+Templates receive the login event with these fields:
+
+| Field | Example |
+| --- | --- |
+| `.Username` | `alice` |
+| `.IP` | `203.0.113.5` |
+| `.Port` | `50568` (client source port) |
+| `.Method` | `publickey` / `password` |
+| `.Hostname` | `web-01` |
+| `.Time` | a `time.Time`; format with `{{.Time.Format "2006-01-02 15:04:05"}}` |
+
+```json
+"smtp": {
+  "enabled": true,
+  "host": "smtp.example.com",
+  "from": "alert@example.com",
+  "to": ["admin@example.com"],
+  "subject_template": "[ALERT] SSH login {{.Username}}@{{.Hostname}}",
+  "body_template": "{{.Username}} logged in from {{.IP}}:{{.Port}} via {{.Method}} at {{.Time.Format \"2006-01-02 15:04:05\"}}",
+  "html": false
+}
+```
+
+- `subject_template` / `body_template`: inline Go templates. Empty values use the
+  built-in subject and body.
+- `body_template_file`: a path read as the body template; it takes precedence
+  over `body_template` and is handy for multi-line or HTML bodies.
+- `html: true` renders the body as `text/html` (using `html/template`, which
+  auto-escapes the event fields); pair it with a `body_template`.
+
+Templates are compiled at startup, so a malformed template fails fast with a
+clear error rather than silently dropping alerts.
+
+Ready-to-use HTML and plain-text examples live in
+[`examples/email/`](examples/email/).
+
 ## Run
 
 ```sh

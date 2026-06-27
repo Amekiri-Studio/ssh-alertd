@@ -137,6 +137,40 @@ curl -s "https://api.telegram.org/bot<TOKEN>/sendMessage" \
 
 Telegram 和 SMTP 相互独立：启用其中一个并不要求启用另一个。
 
+#### 自定义邮件模板
+
+主题和正文可以用 [Go 模板](https://pkg.go.dev/text/template) 自定义。
+模板会接收登录事件，包含以下字段：
+
+| 字段 | 示例 |
+| --- | --- |
+| `.Username` | `alice` |
+| `.IP` | `203.0.113.5` |
+| `.Port` | `50568`（客户端来源端口） |
+| `.Method` | `publickey` / `password` |
+| `.Hostname` | `web-01` |
+| `.Time` | 一个 `time.Time`；用 `{{.Time.Format "2006-01-02 15:04:05"}}` 格式化 |
+
+```json
+"smtp": {
+  "enabled": true,
+  "host": "smtp.example.com",
+  "from": "alert@example.com",
+  "to": ["admin@example.com"],
+  "subject_template": "[ALERT] SSH login {{.Username}}@{{.Hostname}}",
+  "body_template": "{{.Username}} logged in from {{.IP}}:{{.Port}} via {{.Method}} at {{.Time.Format \"2006-01-02 15:04:05\"}}",
+  "html": false
+}
+```
+
+- `subject_template` / `body_template`：内联的 Go 模板。留空则使用内置的主题和正文。
+- `body_template_file`：作为正文模板读取的文件路径；它的优先级高于 `body_template`，便于编写多行或 HTML 正文。
+- `html: true` 会将正文渲染为 `text/html`（使用 `html/template`，它会自动转义事件字段）；请与 `body_template` 搭配使用。
+
+模板在启动时编译，因此格式错误的模板会立即以清晰的错误信息失败，而不会悄无声息地丢弃告警。
+
+开箱即用的 HTML 和纯文本示例位于 [`examples/email/`](../examples/email/)。
+
 ## 运行
 
 ```sh

@@ -75,6 +75,21 @@ type SMTPConfig struct {
 	// Encryption selects the transport security: "starttls" (default, typically
 	// port 587), "tls" (implicit TLS / SMTPS, typically port 465) or "none".
 	Encryption string `json:"encryption"`
+
+	// SubjectTemplate is an optional Go text/template for the email subject.
+	// Templates receive the login event with fields .Username .IP .Port .Method
+	// .Hostname .Time (e.g. {{.Username}}, {{.Time.Format "2006-01-02 15:04:05"}}).
+	// Empty uses the built-in subject.
+	SubjectTemplate string `json:"subject_template"`
+	// BodyTemplate is an optional Go template for the email body (same fields as
+	// SubjectTemplate). Empty uses the built-in body.
+	BodyTemplate string `json:"body_template"`
+	// BodyTemplateFile, when set, is read as the body template and takes
+	// precedence over BodyTemplate — convenient for multi-line bodies.
+	BodyTemplateFile string `json:"body_template_file"`
+	// HTML renders the body as text/html (using html/template for auto-escaping)
+	// instead of text/plain. Pair it with a BodyTemplate.
+	HTML bool `json:"html"`
 }
 
 // Load reads, parses and validates the config file at path.

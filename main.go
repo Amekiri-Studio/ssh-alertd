@@ -1,10 +1,11 @@
 // Command ssh-alertd watches sshd logs and sends an alert on every successful
-// SSH login. Backends are pluggable; Telegram is implemented today.
+// SSH login. Backends are pluggable; Telegram and SMTP are implemented today.
 package main
 
 import (
 	"context"
 	"flag"
+	"fmt"
 	"log"
 	"os"
 	"os/signal"
@@ -36,7 +37,10 @@ func main() {
 		}
 	}
 
-	notifiers := buildNotifiers(cfg, logger)
+	notifiers, err := buildNotifiers(cfg, logger)
+	if err != nil {
+		logger.Fatalf("notifiers: %v", err)
+	}
 	if len(notifiers) == 0 {
 		logger.Fatalf("no notifiers enabled; nothing to do")
 	}
@@ -58,7 +62,7 @@ func main() {
 }
 
 // buildNotifiers constructs the enabled notifier backends from config.
-func buildNotifiers(cfg *config.Config, logger *log.Logger) []notifier.Notifier {
+func buildNotifiers(cfg *config.Config, logger *log.Logger) ([]notifier.Notifier, error) {
 	var ns []notifier.Notifier
 
 	if cfg.Notifiers.Telegram.Enabled {
@@ -73,13 +77,37 @@ func buildNotifiers(cfg *config.Config, logger *log.Logger) []notifier.Notifier 
 
 	if cfg.Notifiers.SMTP.Enabled {
 		s := cfg.Notifiers.SMTP
-		ns = append(ns, notifier.NewSMTP(
-			s.Host, s.Port, s.Username, s.Password, s.From, s.To, s.Encryption,
-		))
+
+		// A body template file, when set, overrides the inline body template.
+		body := s.BodyTemplate
+		if s.BodyTemplateFile != "" {
+			data, err := os.ReadFile(s.BodyTemplateFile)
+			if err != nil {
+				return nil, fmt.Errorf("smtp body_template_file: %w", err)
+			}
+			body = string(data)
+		}
+
+		sm, err := notifier.NewSMTP(notifier.SMTPOptions{
+			Host:            s.Host,
+			Port:            s.Port,
+			Username:        s.Username,
+			Password:        s.Password,
+			From:            s.From,
+			To:              s.To,
+			Encryption:      s.Encryption,
+			SubjectTemplate: s.SubjectTemplate,
+			BodyTemplate:    body,
+			HTML:            s.HTML,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("smtp: %w", err)
+		}
+		ns = append(ns, sm)
 		logger.Printf("enabled notifier: smtp")
 	}
 
 	// Future backends (whatsapp, wecom, dingtalk, feishu) register here.
 
-	return ns
+	return ns, nil
 }

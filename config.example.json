@@ -19,7 +19,11 @@
       "password": "your-smtp-password",
       "from": "alert@example.com",
       "to": ["admin@example.com"],
-      "encryption": "starttls"
+      "encryption": "starttls",
+      "subject_template": "",
+      "body_template": "",
+      "body_template_file": "",
+      "html": false
     }
   }
 }

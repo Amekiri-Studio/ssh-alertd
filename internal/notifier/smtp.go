@@ -4,10 +4,13 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
+	htmltemplate "html/template"
+	"mime"
 	"net"
 	"net/smtp"
 	"strconv"
 	"strings"
+	texttemplate "text/template"
 	"time"
 
 	"ssh-alertd/internal/event"
@@ -20,7 +23,25 @@ const (
 	smtpNone     = "none"     // no transport security (usually port 25)
 )
 
-// SMTP delivers alerts as email over SMTP.
+// renderFunc turns a login event into a rendered string (subject or body).
+type renderFunc func(event.LoginEvent) (string, error)
+
+// SMTPOptions configures an SMTP notifier. BodyTemplate is the already-resolved
+// template text (the caller reads any template file first).
+type SMTPOptions struct {
+	Host            string
+	Port            int
+	Username        string
+	Password        string
+	From            string
+	To              []string
+	Encryption      string
+	SubjectTemplate string
+	BodyTemplate    string
+	HTML            bool
+}
+
+// SMTP delivers alerts as email over SMTP, with optional custom templates.
 type SMTP struct {
 	host       string
 	port       int
@@ -29,35 +50,116 @@ type SMTP struct {
 	from       string
 	to         []string
 	encryption string
+	html       bool
+
+	renderSubject renderFunc
+	renderBody    renderFunc
 }
 
-// NewSMTP builds an SMTP notifier. encryption is one of "starttls", "tls" or
-// "none"; when empty it is inferred from the port (465 → tls, else starttls).
-func NewSMTP(host string, port int, username, password, from string, to []string, encryption string) *SMTP {
-	if encryption == "" {
-		if port == 465 {
-			encryption = smtpImplicit
+// NewSMTP builds an SMTP notifier and compiles any custom templates up front so
+// template errors surface at startup rather than on the first login. encryption
+// is one of "starttls", "tls" or "none"; when empty it is inferred from the
+// port (465 → tls, else starttls).
+func NewSMTP(o SMTPOptions) (*SMTP, error) {
+	enc := o.Encryption
+	if enc == "" {
+		if o.Port == 465 {
+			enc = smtpImplicit
 		} else {
-			encryption = smtpStartTLS
+			enc = smtpStartTLS
 		}
 	}
-	return &SMTP{
-		host:       host,
-		port:       port,
-		username:   username,
-		password:   password,
-		from:       from,
-		to:         append([]string(nil), to...),
-		encryption: encryption,
+
+	subject, err := buildSubjectRenderer(o.SubjectTemplate)
+	if err != nil {
+		return nil, fmt.Errorf("subject_template: %w", err)
 	}
+	body, err := buildBodyRenderer(o.BodyTemplate, o.HTML)
+	if err != nil {
+		return nil, fmt.Errorf("body_template: %w", err)
+	}
+
+	return &SMTP{
+		host:          o.Host,
+		port:          o.Port,
+		username:      o.Username,
+		password:      o.Password,
+		from:          o.From,
+		to:            append([]string(nil), o.To...),
+		encryption:    enc,
+		html:          o.HTML,
+		renderSubject: subject,
+		renderBody:    body,
+	}, nil
 }
 
 // Name implements Notifier.
 func (s *SMTP) Name() string { return "smtp" }
 
+// buildSubjectRenderer returns a renderer for the subject. The subject is always
+// plain text, so it uses text/template; an empty template uses the built-in.
+func buildSubjectRenderer(tmpl string) (renderFunc, error) {
+	if tmpl == "" {
+		return func(e event.LoginEvent) (string, error) {
+			return fmt.Sprintf("[ssh-alertd] SSH login: %s@%s from %s",
+				e.Username, e.Hostname, e.IP), nil
+		}, nil
+	}
+	t, err := texttemplate.New("subject").Parse(tmpl)
+	if err != nil {
+		return nil, err
+	}
+	return func(e event.LoginEvent) (string, error) {
+		var b strings.Builder
+		if err := t.Execute(&b, e); err != nil {
+			return "", err
+		}
+		return b.String(), nil
+	}, nil
+}
+
+// buildBodyRenderer returns a renderer for the body. An empty template uses the
+// built-in plain body; html selects html/template (auto-escaping) over text.
+func buildBodyRenderer(tmpl string, html bool) (renderFunc, error) {
+	if tmpl == "" {
+		return func(e event.LoginEvent) (string, error) {
+			return plainBody(e), nil
+		}, nil
+	}
+	if html {
+		t, err := htmltemplate.New("body").Parse(tmpl)
+		if err != nil {
+			return nil, err
+		}
+		return func(e event.LoginEvent) (string, error) {
+			var b strings.Builder
+			if err := t.Execute(&b, e); err != nil {
+				return "", err
+			}
+			return b.String(), nil
+		}, nil
+	}
+	t, err := texttemplate.New("body").Parse(tmpl)
+	if err != nil {
+		return nil, err
+	}
+	return func(e event.LoginEvent) (string, error) {
+		var b strings.Builder
+		if err := t.Execute(&b, e); err != nil {
+			return "", err
+		}
+		return b.String(), nil
+	}, nil
+}
+
 // Send implements Notifier by delivering one email per event. The context
 // bounds the initial connection and the overall exchange via a deadline.
 func (s *SMTP) Send(ctx context.Context, e event.LoginEvent) error {
+	msg, err := s.message(e)
+	if err != nil {
+		return err
+	}
+
 	addr := net.JoinHostPort(s.host, strconv.Itoa(s.port))
 
 	var dialer net.Dialer
@@ -110,7 +212,7 @@ func (s *SMTP) Send(ctx context.Context, e event.LoginEvent) error {
 	if err != nil {
 		return fmt.Errorf("DATA: %w", err)
 	}
-	if _, err := w.Write([]byte(s.message(e))); err != nil {
+	if _, err := w.Write([]byte(msg)); err != nil {
 		return fmt.Errorf("write body: %w", err)
 	}
 	if err := w.Close(); err != nil {
@@ -120,22 +222,38 @@ func (s *SMTP) Send(ctx context.Context, e event.LoginEvent) error {
 }
 
 // message renders an RFC 5322 message with CRLF line endings. The subject is
-// kept ASCII so no header encoding is required; the UTF-8 body carries the
-// detail.
-func (s *SMTP) message(e event.LoginEvent) string {
-	subject := fmt.Sprintf("[ssh-alertd] SSH login: %s@%s from %s",
-		e.Username, e.Hostname, e.IP)
+// MIME word-encoded so non-ASCII (e.g. a custom template in Chinese) is safe in
+// the header; the body carries the rest, as text/plain or text/html.
+func (s *SMTP) message(e event.LoginEvent) (string, error) {
+	subject, err := s.renderSubject(e)
+	if err != nil {
+		return "", fmt.Errorf("render subject: %w", err)
+	}
+	// A subject is a single header line.
+	subject = strings.TrimSpace(strings.ReplaceAll(subject, "\n", " "))
+
+	body, err := s.renderBody(e)
+	if err != nil {
+		return "", fmt.Errorf("render body: %w", err)
+	}
+
+	contentType := "text/plain; charset=UTF-8"
+	if s.html {
+		contentType = "text/html; charset=UTF-8"
+	}
 
 	headers := []string{
 		"Date: " + e.Time.Format(time.RFC1123Z),
 		"From: " + s.from,
 		"To: " + strings.Join(s.to, ", "),
-		"Subject: " + subject,
+		"Subject: " + mime.QEncoding.Encode("utf-8", subject),
 		"MIME-Version: 1.0",
-		"Content-Type: text/plain; charset=UTF-8",
+		"Content-Type: " + contentType,
 		"Content-Transfer-Encoding: 8bit",
 	}
 
-	body := strings.ReplaceAll(plainBody(e), "\n", "\r\n")
-	return strings.Join(headers, "\r\n") + "\r\n\r\n" + body + "\r\n"
+	// Normalise body line endings to CRLF.
+	body = strings.ReplaceAll(body, "\r\n", "\n")
+	body = strings.ReplaceAll(body, "\n", "\r\n")
+	return strings.Join(headers, "\r\n") + "\r\n\r\n" + body + "\r\n", nil
 }
