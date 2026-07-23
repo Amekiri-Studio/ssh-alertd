@@ -36,6 +36,32 @@ internal/
 Data flow: `Source` (journald/file) → `Monitor` parses "Accepted ..." lines →
 `Dispatcher` fans each `LoginEvent` out to all enabled `Notifier`s concurrently.
 
+## Install
+
+### Arch Linux (AUR)
+
+- [`ssh-alertd`](https://aur.archlinux.org/packages/ssh-alertd) — stable release
+- [`ssh-alertd-git`](https://aur.archlinux.org/packages/ssh-alertd-git) — latest git
+
+```sh
+yay -S ssh-alertd        # or: paru -S ssh-alertd
+```
+
+### Debian / Ubuntu
+
+Download the `.deb` for your architecture from the
+[latest release](https://github.com/Amekiri-Studio/ssh-alertd/releases/latest):
+
+```sh
+sudo apt install ./ssh-alertd_*_amd64.deb
+```
+
+### Other Linux
+
+Grab a standalone `linux-amd64` / `linux-arm64` tarball from the
+[releases](https://github.com/Amekiri-Studio/ssh-alertd/releases/latest), or
+build from source (below).
+
 ## Build
 
 ```sh

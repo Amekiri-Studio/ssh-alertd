@@ -35,6 +35,29 @@ internal/
 データフロー: `Source`（journald/file）→ `Monitor` が "Accepted ..." 行を解析 →
 `Dispatcher` が各 `LoginEvent` を、有効なすべての `Notifier` へ並行にファンアウトします。
 
+## インストール
+
+### Arch Linux (AUR)
+
+- [`ssh-alertd`](https://aur.archlinux.org/packages/ssh-alertd) — 安定版リリース
+- [`ssh-alertd-git`](https://aur.archlinux.org/packages/ssh-alertd-git) — 最新の git 版
+
+```sh
+yay -S ssh-alertd        # or: paru -S ssh-alertd
+```
+
+### Debian / Ubuntu
+
+[最新リリース](https://github.com/Amekiri-Studio/ssh-alertd/releases/latest)からアーキテクチャに合った `.deb` をダウンロードします：
+
+```sh
+sudo apt install ./ssh-alertd_*_amd64.deb
+```
+
+### その他の Linux
+
+[releases](https://github.com/Amekiri-Studio/ssh-alertd/releases/latest) からスタンドアロンの `linux-amd64` / `linux-arm64` tarball を入手するか、ソースからビルドします(下記参照)。
+
 ## ビルド
 
 ```sh

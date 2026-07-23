@@ -31,6 +31,29 @@ internal/
 
 数据流：`Source`（journald/file）→ `Monitor` 解析 "Accepted ..." 行 → `Dispatcher` 将每个 `LoginEvent` 并发地分发给所有已启用的 `Notifier`。
 
+## 安装
+
+### Arch Linux (AUR)
+
+- [`ssh-alertd`](https://aur.archlinux.org/packages/ssh-alertd) —— 稳定版本
+- [`ssh-alertd-git`](https://aur.archlinux.org/packages/ssh-alertd-git) —— 最新 git 版本
+
+```sh
+yay -S ssh-alertd        # or: paru -S ssh-alertd
+```
+
+### Debian / Ubuntu
+
+从[最新发布](https://github.com/Amekiri-Studio/ssh-alertd/releases/latest)下载适用于你的架构的 `.deb`：
+
+```sh
+sudo apt install ./ssh-alertd_*_amd64.deb
+```
+
+### 其他 Linux
+
+从[发布页面](https://github.com/Amekiri-Studio/ssh-alertd/releases/latest)获取独立的 `linux-amd64` / `linux-arm64` tarball，或从源码构建（见下文）。
+
 ## 构建
 
 ```sh
