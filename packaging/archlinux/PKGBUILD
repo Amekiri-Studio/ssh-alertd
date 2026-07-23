@@ -12,7 +12,7 @@ optdepends=('openssh: the sshd service whose logins are watched')
 backup=('etc/ssh-alertd/config.json')
 install="$pkgname.install"
 source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
-sha256sums=('SKIP')
+sha256sums=('8f32be175c98b9f7dbe45d3bc869cead934342121f8a89f29cf84a09e7e88a7e')
 
 build() {
 	cd "$pkgname-$pkgver"
