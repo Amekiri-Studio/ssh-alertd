@@ -13,8 +13,8 @@
 - **用戶端連接埠**（用戶端的來源連接埠，取自 sshd 日誌行中的
   `from <IP> port <port>`，而非伺服器監聽的 22 埠）
 
-目前已實作 Telegram 與 SMTP。通知後端層是一個介面，因此 WhatsApp、
-企業微信、釘釘與飛書都能以獨立、自成一體的檔案新增，
+目前已實作 Telegram、SMTP、飛書 (Feishu) / Lark、釘釘 (DingTalk) 與企業微信
+(WeCom)。通知後端層是一個介面，因此 WhatsApp 能以獨立、自成一體的檔案新增，
 而無須變動系統的其他部分。
 
 ## 架構
@@ -31,6 +31,10 @@ internal/
     notifier.go               Notifier interface + concurrent Dispatcher
     telegram.go               Telegram Bot backend (one file per backend)
     smtp.go                   SMTP (email) backend
+    webhook.go                shared helpers for the group-robot webhooks
+    feishu.go                 Feishu / Lark custom bot
+    dingtalk.go               DingTalk custom robot
+    wecom.go                  WeCom group robot
 ```
 
 資料流向：`Source`（journald/file）→ `Monitor` 解析 "Accepted ..." 行 →
@@ -84,8 +88,9 @@ git tag -a v0.1.3 -m "v0.1.3" && git push --follow-tags
 
 ## 設定
 
-將 `config.example.json` 複製為 `/etc/ssh-alertd/config.json`，並填入你的
-Telegram bot token 與 chat ID。
+將 `config.example.json` 複製為 `/etc/ssh-alertd/config.json`，並填入你想使用的
+後端所需的憑證。你可以視需要啟用任意多個——每個已啟用的後端都會獨立
+收到每一則警示。
 
 - `log_source.type`：`journald`（預設，透過 `journalctl -f` 讀取 sshd）或
   `file`（透過 `tail -F` 跟隨 `log_source.path`，例如 Debian/Ubuntu 上的
@@ -207,7 +212,7 @@ curl -s "https://api.telegram.org/bot<TOKEN>/sendMessage" \
 - `to`：一個或多個收件者；至少需要一個。
 - 可以同時啟用多個通知後端——每個已啟用的後端都會獨立收到每一則警示。
 
-Telegram 與 SMTP 彼此獨立：啟用其中一個並不需要另一個。
+所有後端彼此獨立：啟用其中一個並不需要其他任何一個。
 
 #### 自訂郵件範本
 
@@ -242,6 +247,94 @@ Telegram 與 SMTP 彼此獨立：啟用其中一個並不需要另一個。
 範本會在啟動時編譯，因此格式錯誤的範本會立即以清楚的錯誤訊息失敗，而不會默默地遺漏警示。
 
 可直接使用的 HTML 與純文字範例位於 [`examples/email/`](../examples/email/)。
+
+### 群機器人：飛書、釘釘、企業微信
+
+這三者都是**群機器人**，而非企業應用：把機器人加進一個聊天群組，複製它給你的
+webhook URL，就完成了。不需要註冊應用、不需要管理員審核，也沒有需要更新的
+`access_token`——這使它們成為在中國境內伺服器上最容易使用的後端，因為那裡無法
+連線 Telegram。
+
+它們的結構相同：
+
+| | 飛書 / Lark | 釘釘 | 企業微信 |
+| --- | --- | --- | --- |
+| 設定鍵 | `feishu` | `dingtalk` | `wecom` |
+| 憑證 | webhook URL | webhook URL（`access_token`） | webhook URL（`key`） |
+| 簽名 | 選用（`secret`） | 選用（`secret`） | 無 |
+| `msg_type` | `text`、`interactive` | `text`、`markdown` | `text`、`markdown` |
+| 提及 | — | — | `mentioned_list` |
+
+它們全都接受 `message_template` / `message_template_file`，並提供與郵件範本相同的
+事件欄位（`.Username` `.IP` `.Port` `.Method` `.Hostname` `.Time`）。留空則使用
+內建的版面配置。
+
+#### 飛書 (Feishu) / Lark
+
+```json
+"feishu": {
+  "enabled": true,
+  "webhook_url": "https://open.feishu.cn/open-apis/bot/v2/hook/xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
+  "secret": "",
+  "msg_type": "text"
+}
+```
+
+透過**群設定 → 群機器人 → 新增機器人 → 自訂機器人**建立機器人。若使用 Lark
+（國際版），請改用 `open.larksuite.com` 的 URL；其餘皆不變。
+
+- `secret`：若你在機器人上啟用了簽名校驗，請設定此值。若使用關鍵字或
+  IP 允許清單這類安全設定，則留空。
+- `msg_type: "interactive"` 會傳送[訊息卡片](https://open.feishu.cn/document/common-capabilities/message-card/message-card-overview)，
+  並**必須**搭配會產生卡片 JSON 的範本。請使用內建的 `json`
+  函式安全地為欄位加上引號：`"content": {{json .Username}}`。無效的 JSON
+  會以清楚的錯誤被拒絕，而不會變成難以理解的 API 失敗。
+
+範例：[`examples/feishu/`](../examples/feishu/)。
+
+#### 釘釘 (DingTalk)
+
+```json
+"dingtalk": {
+  "enabled": true,
+  "webhook_url": "https://oapi.dingtalk.com/robot/send?access_token=REPLACE_ME",
+  "secret": "SECxxxxxxxx",
+  "msg_type": "markdown",
+  "title": "SSH Login Alert"
+}
+```
+
+透過**群設定 → 智慧群助手 → 新增機器人 → 自訂**建立機器人。
+
+- 釘釘要求**至少一項**安全設定。建議使用加簽：將 `SEC...` 的值貼入
+  `secret`，守護程式便會在每次請求中加上 `timestamp` 與 `sign` 參數。若你
+  改用關鍵字，請確認你的範本中包含該關鍵字，否則釘釘會回傳
+  `errcode 310000`。
+- `title` 是顯示在對話列表中的通知行（僅限 markdown）。
+
+範例：[`examples/dingtalk/`](../examples/dingtalk/)。
+
+#### 企業微信 (WeCom)
+
+```json
+"wecom": {
+  "enabled": true,
+  "webhook_url": "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
+  "msg_type": "markdown"
+}
+```
+
+透過**群設定 → 群機器人 → 新增**建立機器人。
+
+- 企業微信**沒有簽名機制**：URL 中的 `key` 是唯一的憑證，因此請將
+  `config.json` 維持在 `600`/`640` 權限，並考慮使用機器人的 IP 允許清單。
+- `mentioned_list`（例如 `["@all"]`）與 `mentioned_mobile_list` 可在群組中
+  @ 特定成員。它們僅適用於 `msg_type: "text"`；與 `markdown` 併用會在啟動時
+  被拒絕。
+- Markdown 支援三種具名色彩——`info`（綠色）、`comment`（灰色）與
+  `warning`（橘色）——透過 `<font color="warning">…</font>` 使用。
+
+範例：[`examples/wecom/`](../examples/wecom/)。
 
 ## 執行
 

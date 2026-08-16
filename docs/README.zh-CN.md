@@ -11,7 +11,7 @@
 - **时间**
 - **客户端端口**（客户端的来源端口，取自 sshd 日志行 `from <IP> port <port>`——而非服务器的监听端口 22）
 
-目前已实现 Telegram 和 SMTP。通知后端层是一个接口，因此 WhatsApp、企业微信、钉钉和飞书都可以作为自包含的文件添加进来，而无需改动系统的其余部分。
+目前已实现 Telegram、SMTP、飞书（Feishu）/ Lark、钉钉（DingTalk）和企业微信（WeCom）。通知后端层是一个接口，因此 WhatsApp 可以作为一个自包含的文件添加进来，而无需改动系统的其余部分。
 
 ## 架构
 
@@ -27,6 +27,10 @@ internal/
     notifier.go               Notifier interface + concurrent Dispatcher
     telegram.go               Telegram Bot backend (one file per backend)
     smtp.go                   SMTP (email) backend
+    webhook.go                shared helpers for the group-robot webhooks
+    feishu.go                 Feishu / Lark custom bot
+    dingtalk.go               DingTalk custom robot
+    wecom.go                  WeCom group robot
 ```
 
 数据流：`Source`（journald/file）→ `Monitor` 解析 "Accepted ..." 行 → `Dispatcher` 将每个 `LoginEvent` 并发地分发给所有已启用的 `Notifier`。
@@ -77,7 +81,7 @@ git tag -a v0.1.3 -m "v0.1.3" && git push --follow-tags
 
 ## 配置
 
-将 `config.example.json` 复制到 `/etc/ssh-alertd/config.json`，并填入你的 Telegram bot token 和 chat ID。
+将 `config.example.json` 复制到 `/etc/ssh-alertd/config.json`，并为你想要使用的后端填入相应的凭据。你可以按需启用任意多个后端——每个已启用的后端都会独立地收到每一条告警。
 
 - `log_source.type`：`journald`（默认，通过 `journalctl -f` 读取 sshd）或 `file`（通过 `tail -F` 跟踪 `log_source.path`，例如 Debian/Ubuntu 上的 `/var/log/auth.log` 或 RHEL 上的 `/var/log/secure`）。
 - `hostname`：可选的覆盖项；默认使用操作系统主机名。
@@ -180,7 +184,7 @@ curl -s "https://api.telegram.org/bot<TOKEN>/sendMessage" \
 - `to`：一个或多个收件人；至少需要一个。
 - 可以同时启用多个通知后端——每个已启用的后端都会独立地收到每一条告警。
 
-Telegram 和 SMTP 相互独立：启用其中一个并不要求启用另一个。
+所有后端相互独立：启用其中任何一个都不要求启用其他后端。
 
 #### 自定义邮件模板
 
@@ -215,6 +219,77 @@ Telegram 和 SMTP 相互独立：启用其中一个并不要求启用另一个�
 模板在启动时编译，因此格式错误的模板会立即以清晰的错误信息失败，而不会悄无声息地丢弃告警。
 
 开箱即用的 HTML 和纯文本示例位于 [`examples/email/`](../examples/email/)。
+
+### 群机器人：飞书、钉钉、企业微信
+
+这三者都是**群机器人**，而不是企业应用：把机器人添加到一个群聊中，复制它给出的 webhook URL，就完成了。无需注册应用，无需管理员审批，也没有需要刷新的 `access_token`——这使它们成为在中国境内服务器上最容易运行的后端，因为那里无法访问 Telegram。
+
+它们的配置形式相同：
+
+| | 飞书 / Lark | 钉钉 | 企业微信 |
+| --- | --- | --- | --- |
+| 配置键 | `feishu` | `dingtalk` | `wecom` |
+| 凭据 | webhook URL | webhook URL（`access_token`） | webhook URL（`key`） |
+| 签名 | 可选（`secret`） | 可选（`secret`） | 无 |
+| `msg_type` | `text`、`interactive` | `text`、`markdown` | `text`、`markdown` |
+| @ 提醒 | —— | —— | `mentioned_list` |
+
+它们都接受 `message_template` / `message_template_file`，其事件字段与邮件模板相同（`.Username` `.IP` `.Port` `.Method` `.Hostname` `.Time`）。留空则使用内置的排版。
+
+#### 飞书（Feishu）/ Lark
+
+```json
+"feishu": {
+  "enabled": true,
+  "webhook_url": "https://open.feishu.cn/open-apis/bot/v2/hook/xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
+  "secret": "",
+  "msg_type": "text"
+}
+```
+
+通过**群设置 → 群机器人 → 添加机器人 → 自定义机器人**创建机器人。若使用 Lark（国际版），改用 `open.larksuite.com` 的 URL 即可，其余配置不变。
+
+- `secret`：如果你在机器人上启用了签名校验，就填入它。使用关键词或 IP 白名单方式时留空。
+- `msg_type: "interactive"` 会发送[消息卡片](https://open.feishu.cn/document/common-capabilities/message-card/message-card-overview)，并且**要求**模板渲染出卡片 JSON。请使用内置的 `json` 函数来安全地为字段加引号：`"content": {{json .Username}}`。无效的 JSON 会以清晰的错误被拒绝，而不是变成难以理解的 API 失败。
+
+示例：[`examples/feishu/`](../examples/feishu/)。
+
+#### 钉钉（DingTalk）
+
+```json
+"dingtalk": {
+  "enabled": true,
+  "webhook_url": "https://oapi.dingtalk.com/robot/send?access_token=REPLACE_ME",
+  "secret": "SECxxxxxxxx",
+  "msg_type": "markdown",
+  "title": "SSH Login Alert"
+}
+```
+
+通过**群设置 → 智能群助手 → 添加机器人 → 自定义**创建机器人。
+
+- 钉钉要求**至少设置一项**安全设置。推荐使用加签：把 `SEC...` 的值粘贴到 `secret` 中，守护进程会为每个请求添加 `timestamp` 和 `sign` 参数。如果你改用关键词，请确保模板中包含该关键词，否则钉钉会返回 `errcode 310000`。
+- `title` 是会话列表中显示的通知行（仅 markdown 有效）。
+
+示例：[`examples/dingtalk/`](../examples/dingtalk/)。
+
+#### 企业微信（WeCom）
+
+```json
+"wecom": {
+  "enabled": true,
+  "webhook_url": "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
+  "msg_type": "markdown"
+}
+```
+
+通过**群设置 → 群机器人 → 添加**创建机器人。
+
+- 企业微信**没有签名机制**：URL 中的 `key` 是唯一的凭据，因此请将 `config.json` 保持为 `600`/`640` 权限，并考虑使用机器人的 IP 白名单。
+- `mentioned_list`（例如 `["@all"]`）和 `mentioned_mobile_list` 用于在群里 @ 相关人员。它们仅在 `msg_type: "text"` 下有效；与 `markdown` 搭配使用会在启动时被拒绝。
+- Markdown 支持三种具名颜色——`info`（绿色）、`comment`（灰色）和 `warning`（橙色）——通过 `<font color="warning">…</font>` 使用。
+
+示例：[`examples/wecom/`](../examples/wecom/)。
 
 ## 运行
 
