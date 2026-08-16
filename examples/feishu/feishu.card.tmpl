@@ -1,0 +1,38 @@
+{{- $icon := "🟢" -}}
+{{- $color := "green" -}}
+{{- if eq .Method "password" -}}
+{{- $icon = "🔴" -}}
+{{- $color = "red" -}}
+{{- end -}}
+{
+  "config": { "wide_screen_mode": true },
+  "header": {
+    "template": "{{$color}}",
+    "title": {
+      "tag": "plain_text",
+      "content": {{json (printf "%s SSH Login — %s" $icon .Hostname)}}
+    }
+  },
+  "elements": [
+    {
+      "tag": "div",
+      "fields": [
+        { "is_short": true, "text": { "tag": "lark_md", "content": {{json (printf "**User**\n%s" .Username)}} } },
+        { "is_short": true, "text": { "tag": "lark_md", "content": {{json (printf "**Method**\n%s" .Method)}} } },
+        { "is_short": true, "text": { "tag": "lark_md", "content": {{json (printf "**From IP**\n%s" .IP)}} } },
+        { "is_short": true, "text": { "tag": "lark_md", "content": {{json (printf "**Client Port**\n%s" .Port)}} } }
+      ]
+    },
+    { "tag": "hr" },
+    {
+      "tag": "note",
+      "elements": [
+        { "tag": "plain_text", "content": {{json (.Time.Format "2006-01-02 15:04:05 MST")}} }
+      ]
+    }{{if eq .Method "password"}},
+    {
+      "tag": "div",
+      "text": { "tag": "lark_md", "content": "⚠️ **Password authentication** — consider switching to key-based login." }
+    }{{end}}
+  ]
+}

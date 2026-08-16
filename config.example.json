@@ -27,6 +27,30 @@
       "body_template": "",
       "body_template_file": "",
       "html": false
+    },
+    "feishu": {
+      "enabled": false,
+      "webhook_url": "https://open.feishu.cn/open-apis/bot/v2/hook/xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
+      "secret": "",
+      "msg_type": "text",
+      "message_template": "",
+      "message_template_file": ""
+    },
+    "dingtalk": {
+      "enabled": false,
+      "webhook_url": "https://oapi.dingtalk.com/robot/send?access_token=REPLACE_ME",
+      "secret": "SECxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      "msg_type": "text",
+      "title": "",
+      "message_template": "",
+      "message_template_file": ""
+    },
+    "wecom": {
+      "enabled": false,
+      "webhook_url": "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
+      "msg_type": "text",
+      "message_template": "",
+      "message_template_file": ""
     }
   }
 }
