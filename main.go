@@ -124,7 +124,86 @@ func buildNotifiers(cfg *config.Config, logger *log.Logger) ([]notifier.Notifier
 		logger.Printf("enabled notifier: smtp")
 	}
 
-	// Future backends (whatsapp, wecom, dingtalk, feishu) register here.
+	if cfg.Notifiers.Feishu.Enabled {
+		f := cfg.Notifiers.Feishu
+
+		message, err := resolveTemplate("feishu", f.MessageTemplate, f.MessageTemplateFile)
+		if err != nil {
+			return nil, err
+		}
+
+		fs, err := notifier.NewFeishu(notifier.FeishuOptions{
+			WebhookURL:      f.WebhookURL,
+			Secret:          f.Secret,
+			MsgType:         f.MsgType,
+			MessageTemplate: message,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("feishu: %w", err)
+		}
+		ns = append(ns, fs)
+		logger.Printf("enabled notifier: feishu")
+	}
+
+	if cfg.Notifiers.DingTalk.Enabled {
+		d := cfg.Notifiers.DingTalk
+
+		message, err := resolveTemplate("dingtalk", d.MessageTemplate, d.MessageTemplateFile)
+		if err != nil {
+			return nil, err
+		}
+
+		dt, err := notifier.NewDingTalk(notifier.DingTalkOptions{
+			WebhookURL:      d.WebhookURL,
+			Secret:          d.Secret,
+			MsgType:         d.MsgType,
+			Title:           d.Title,
+			MessageTemplate: message,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("dingtalk: %w", err)
+		}
+		ns = append(ns, dt)
+		logger.Printf("enabled notifier: dingtalk")
+	}
+
+	if cfg.Notifiers.WeCom.Enabled {
+		w := cfg.Notifiers.WeCom
+
+		message, err := resolveTemplate("wecom", w.MessageTemplate, w.MessageTemplateFile)
+		if err != nil {
+			return nil, err
+		}
+
+		wc, err := notifier.NewWeCom(notifier.WeComOptions{
+			WebhookURL:          w.WebhookURL,
+			MsgType:             w.MsgType,
+			MessageTemplate:     message,
+			MentionedList:       w.MentionedList,
+			MentionedMobileList: w.MentionedMobileList,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("wecom: %w", err)
+		}
+		ns = append(ns, wc)
+		logger.Printf("enabled notifier: wecom")
+	}
+
+	// Future backends (whatsapp) register here.
 
 	return ns, nil
+}
+
+// resolveTemplate returns the template text to use for a backend: the contents
+// of file when set, otherwise the inline template. backend names the notifier in
+// error messages.
+func resolveTemplate(backend, inline, file string) (string, error) {
+	if file == "" {
+		return inline, nil
+	}
+	data, err := os.ReadFile(file)
+	if err != nil {
+		return "", fmt.Errorf("%s message_template_file: %w", backend, err)
+	}
+	return string(data), nil
 }

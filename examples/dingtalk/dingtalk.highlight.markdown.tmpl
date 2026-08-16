@@ -1,0 +1,10 @@
+## {{if eq .Method "password"}}🔴{{else}}🟢{{end}} SSH Login on {{.Hostname}}
+
+- **User:** {{.Username}}
+- **From:** {{.IP}}:{{.Port}}
+- **Method:** {{.Method}}
+- **Time:** {{.Time.Format "2006-01-02 15:04:05 MST"}}
+{{- if eq .Method "password"}}
+
+> ⚠️ **Password authentication** — consider switching to key-based login.
+{{- end}}

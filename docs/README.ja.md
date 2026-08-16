@@ -12,9 +12,9 @@ Go で書かれた、小規模でモジュール化された SSH アラートデ
 - **クライアントポート**（クライアントの送信元ポート。sshd のログ行
   `from <IP> port <port>` から取得したもので、サーバーが待ち受けるポート 22 ではありません）
 
-現在は Telegram と SMTP が実装されています。通知層はインターフェースになっているため、WhatsApp、
-WeCom、DingTalk、Feishu を、システムの他の部分に手を加えることなく
-独立したファイルとして追加できます。
+現在は Telegram、SMTP、Feishu（飞书）/ Lark、DingTalk（钉钉）、WeCom（企业微信）が
+実装されています。通知層はインターフェースになっているため、WhatsApp を、
+システムの他の部分に手を加えることなく独立したファイルとして追加できます。
 
 ## アーキテクチャ
 
@@ -30,6 +30,10 @@ internal/
     notifier.go               Notifier interface + concurrent Dispatcher
     telegram.go               Telegram Bot backend (one file per backend)
     smtp.go                   SMTP (email) backend
+    webhook.go                shared helpers for the group-robot webhooks
+    feishu.go                 Feishu / Lark custom bot
+    dingtalk.go               DingTalk custom robot
+    wecom.go                  WeCom group robot
 ```
 
 データフロー: `Source`（journald/file）→ `Monitor` が "Accepted ..." 行を解析 →
@@ -84,7 +88,8 @@ git tag -a v0.1.3 -m "v0.1.3" && git push --follow-tags
 ## 設定
 
 `config.example.json` を `/etc/ssh-alertd/config.json` にコピーし、
-Telegram のボットトークンとチャット ID を記入します。
+使いたいバックエンドの認証情報を記入します。いくつでも有効化でき、
+有効な各バックエンドは、それぞれのアラートを独立して受け取ります。
 
 - `log_source.type`: `journald`（デフォルト。`journalctl -f` 経由で sshd を読み取る）または
   `file`（`tail -F` 経由で `log_source.path` を追従する。例: Debian/Ubuntu では `/var/log/auth.log`、
@@ -206,7 +211,7 @@ curl -s "https://api.telegram.org/bot<TOKEN>/sendMessage" \
 - 複数の通知バックエンドを同時に有効化できます。有効な各バックエンドは、すべての
   アラートを独立して受け取ります。
 
-Telegram と SMTP は独立しています。一方を有効にしても、もう一方は必要ありません。
+すべてのバックエンドは独立しています。いずれかを有効にしても、他のバックエンドは必要ありません。
 
 #### メールテンプレートのカスタマイズ
 
@@ -241,6 +246,97 @@ Telegram と SMTP は独立しています。一方を有効にしても、も�
 テンプレートは起動時にコンパイルされるため、不正なテンプレートはアラートを黙って取りこぼすのではなく、明確なエラーで即座に失敗します。
 
 すぐに使える HTML およびプレーンテキストの例は [`examples/email/`](../examples/email/) にあります。
+
+### グループロボット: Feishu、DingTalk、WeCom
+
+これら 3 つは企業向けアプリではなく **グループロボット** です。チャットグループにボットを追加し、
+提示された Webhook URL をコピーすれば完了です。アプリの登録も、管理者の承認も、
+更新が必要な `access_token` もありません。そのため、Telegram に到達できない中国国内の
+サーバーで動かすには最も手軽なバックエンドです。
+
+いずれも同じ形をしています。
+
+| | Feishu / Lark | DingTalk | WeCom |
+| --- | --- | --- | --- |
+| 設定キー | `feishu` | `dingtalk` | `wecom` |
+| 認証情報 | webhook URL | webhook URL（`access_token`） | webhook URL（`key`） |
+| 署名 | 任意（`secret`） | 任意（`secret`） | なし |
+| `msg_type` | `text`, `interactive` | `text`, `markdown` | `text`, `markdown` |
+| メンション | — | — | `mentioned_list` |
+
+いずれも `message_template` / `message_template_file` を受け付け、メールテンプレートと同じ
+イベントフィールド（`.Username` `.IP` `.Port` `.Method` `.Hostname` `.Time`）を使えます。
+空のままにすると組み込みのレイアウトが使われます。
+
+#### Feishu(飞书) / Lark
+
+```json
+"feishu": {
+  "enabled": true,
+  "webhook_url": "https://open.feishu.cn/open-apis/bot/v2/hook/xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
+  "secret": "",
+  "msg_type": "text"
+}
+```
+
+ボットは **群设置 → 群机器人 → 添加机器人 → 自定义机器人**（グループ設定 → グループボット →
+ボットを追加 → カスタムボット）で作成します。Lark（国際版）の場合は代わりに
+`open.larksuite.com` の URL を使います。それ以外に違いはありません。
+
+- `secret`: ボットで 签名校验（署名検証）を有効にした場合に設定します。キーワードや
+  IP 許可リストによるセキュリティ設定を使う場合は空のままにしてください。
+- `msg_type: "interactive"` は [メッセージカード](https://open.feishu.cn/document/common-capabilities/message-card/message-card-overview)
+  を送信し、カードの JSON をレンダリングするテンプレートが **必須** です。フィールドを安全に
+  クォートするには、組み込みの `json` 関数を使ってください: `"content": {{json .Username}}`。
+  不正な JSON は、分かりにくい API エラーではなく明確なエラーで拒否されます。
+
+例: [`examples/feishu/`](../examples/feishu/)。
+
+#### DingTalk(钉钉)
+
+```json
+"dingtalk": {
+  "enabled": true,
+  "webhook_url": "https://oapi.dingtalk.com/robot/send?access_token=REPLACE_ME",
+  "secret": "SECxxxxxxxx",
+  "msg_type": "markdown",
+  "title": "SSH Login Alert"
+}
+```
+
+ボットは **群设置 → 智能群助手 → 添加机器人 → 自定义**（グループ設定 → スマートグループアシスタント →
+ボットを追加 → カスタム）で作成します。
+
+- DingTalk では **少なくとも 1 つ** のセキュリティ設定が必須です。加签（署名）が推奨されます。
+  `SEC...` の値を `secret` に貼り付けると、デーモンがすべてのリクエストに `timestamp` と
+  `sign` パラメータを付加します。代わりにキーワードを使う場合は、テンプレートにそのキーワードが
+  含まれていることを確認してください。含まれていないと DingTalk は `errcode 310000` を返します。
+- `title` は会話一覧に表示される通知行です（markdown の場合のみ）。
+
+例: [`examples/dingtalk/`](../examples/dingtalk/)。
+
+#### WeCom(企业微信)
+
+```json
+"wecom": {
+  "enabled": true,
+  "webhook_url": "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
+  "msg_type": "markdown"
+}
+```
+
+ボットは **群设置 → 群机器人 → 添加**（グループ設定 → グループボット → 追加）で作成します。
+
+- WeCom には **署名の仕組みがありません**。URL 内の `key` が唯一の認証情報であるため、
+  `config.json` は `600`/`640` のパーミッションに保ち、ロボットの IP 許可リストの利用も
+  検討してください。
+- `mentioned_list`（例: `["@all"]`）と `mentioned_mobile_list` はグループ内のメンバーを
+  メンションします。これらは `msg_type: "text"` でのみ機能し、`markdown` と組み合わせると
+  起動時に拒否されます。
+- Markdown は 3 つの名前付き色 — `info`（緑）、`comment`（グレー）、`warning`（オレンジ）— を
+  `<font color="warning">…</font>` で使えます。
+
+例: [`examples/wecom/`](../examples/wecom/)。
 
 ## 実行
 

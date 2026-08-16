@@ -21,6 +21,8 @@ src/
 *.src.tar.*
 # makepkg-downloaded source tarball (source=(...::...tar.gz))
 packaging/archlinux/*.tar.gz
+# makepkg-cloned VCS source checkout (source=(...::git+...))
+packaging/archlinux-git/ssh-alertd-git/
 
 # deb build artifacts
 packaging/debian/build/

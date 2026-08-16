@@ -43,11 +43,12 @@ install -m644 "$ROOT/deploy/ssh-alertd.tmpfiles" "$STAGE/usr/lib/tmpfiles.d/ssh-
 # Default config (registered as a conffile, mode 0640 to protect the token).
 install -m640 "$ROOT/config.example.json" "$STAGE/etc/ssh-alertd/config.json"
 
-# Example email/Telegram templates (read-only reference under /usr/share).
-# nullglob so a source tree without examples/ is skipped, not a literal glob.
+# Example message templates for every backend (read-only reference under
+# /usr/share). nullglob so a source tree without examples/ is skipped, not a
+# literal glob.
 mkdir -p "$STAGE/usr/share/ssh-alertd/templates"
 shopt -s nullglob
-for tmpl in "$ROOT"/examples/email/*.tmpl "$ROOT"/examples/telegram/*.tmpl; do
+for tmpl in "$ROOT"/examples/*/*.tmpl; do
 	install -m644 "$tmpl" "$STAGE/usr/share/ssh-alertd/templates/$(basename "$tmpl")"
 done
 shopt -u nullglob

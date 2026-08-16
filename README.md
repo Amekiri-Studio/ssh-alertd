@@ -13,9 +13,9 @@ every **successful** SSH login, sends an alert containing:
 - **Client port** (the client's source port, taken from the sshd log line
   `from <IP> port <port>` — not the server's listening port 22)
 
-Telegram and SMTP are implemented today. The notifier layer is an interface, so
-WhatsApp, WeCom, DingTalk and Feishu can be added as self-contained files
-without touching the rest of the system.
+Telegram, SMTP, Feishu (飞书) / Lark, DingTalk (钉钉) and WeCom (企业微信) are
+implemented today. The notifier layer is an interface, so WhatsApp can be added
+as a self-contained file without touching the rest of the system.
 
 ## Architecture
 
@@ -31,6 +31,10 @@ internal/
     notifier.go               Notifier interface + concurrent Dispatcher
     telegram.go               Telegram Bot backend (one file per backend)
     smtp.go                   SMTP (email) backend
+    webhook.go                shared helpers for the group-robot webhooks
+    feishu.go                 Feishu / Lark custom bot
+    dingtalk.go               DingTalk custom robot
+    wecom.go                  WeCom group robot
 ```
 
 Data flow: `Source` (journald/file) → `Monitor` parses "Accepted ..." lines →
@@ -87,8 +91,9 @@ Keep the version in `packaging/archlinux/PKGBUILD` and
 
 ## Configure
 
-Copy `config.example.json` to `/etc/ssh-alertd/config.json` and fill in your
-Telegram bot token and chat ID.
+Copy `config.example.json` to `/etc/ssh-alertd/config.json` and fill in the
+credentials for the backends you want. Enable as many as you like — every
+enabled backend receives each alert independently.
 
 - `log_source.type`: `journald` (default, reads sshd via `journalctl -f`) or
   `file` (tails `log_source.path` via `tail -F`, e.g. `/var/log/auth.log` on
@@ -220,7 +225,7 @@ server directly.
 - Multiple notifiers can be enabled at once — each enabled backend gets every
   alert independently.
 
-Telegram and SMTP are independent: enabling one does not require the other.
+All backends are independent: enabling one does not require any other.
 
 #### Custom email templates
 
@@ -260,6 +265,95 @@ clear error rather than silently dropping alerts.
 
 Ready-to-use HTML and plain-text examples live in
 [`examples/email/`](examples/email/).
+
+### Group robots: Feishu, DingTalk, WeCom
+
+These three are **group robots**, not enterprise apps: add a bot to a chat group,
+copy the webhook URL it gives you, and you are done. There is no app to register,
+no admin approval, and no `access_token` to refresh — which makes them the
+easiest backends to run on a server inside China, where Telegram is unreachable.
+
+They share the same shape:
+
+| | Feishu / Lark | DingTalk | WeCom |
+| --- | --- | --- | --- |
+| Config key | `feishu` | `dingtalk` | `wecom` |
+| Credential | webhook URL | webhook URL (`access_token`) | webhook URL (`key`) |
+| Signing | optional (`secret`) | optional (`secret`) | none |
+| `msg_type` | `text`, `interactive` | `text`, `markdown` | `text`, `markdown` |
+| Mentions | — | — | `mentioned_list` |
+
+All of them accept `message_template` / `message_template_file` with the same
+event fields as the email templates (`.Username` `.IP` `.Port` `.Method`
+`.Hostname` `.Time`). Leave them empty to use the built-in layout.
+
+#### Feishu (飞书) / Lark
+
+```json
+"feishu": {
+  "enabled": true,
+  "webhook_url": "https://open.feishu.cn/open-apis/bot/v2/hook/xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
+  "secret": "",
+  "msg_type": "text"
+}
+```
+
+Create the bot with **群设置 → 群机器人 → 添加机器人 → 自定义机器人**. Use the
+`open.larksuite.com` URL instead for Lark (international); nothing else changes.
+
+- `secret`: set it if you enabled 签名校验 on the bot. Leave empty when using
+  keyword or IP-allowlist security.
+- `msg_type: "interactive"` sends a [message card](https://open.feishu.cn/document/common-capabilities/message-card/message-card-overview)
+  and **requires** a template that renders card JSON. Use the built-in `json`
+  function to quote fields safely: `"content": {{json .Username}}`. Invalid JSON
+  is rejected with a clear error instead of an opaque API failure.
+
+Examples: [`examples/feishu/`](examples/feishu/).
+
+#### DingTalk (钉钉)
+
+```json
+"dingtalk": {
+  "enabled": true,
+  "webhook_url": "https://oapi.dingtalk.com/robot/send?access_token=REPLACE_ME",
+  "secret": "SECxxxxxxxx",
+  "msg_type": "markdown",
+  "title": "SSH Login Alert"
+}
+```
+
+Create the bot with **群设置 → 智能群助手 → 添加机器人 → 自定义**.
+
+- DingTalk requires **at least one** security setting. Signing (加签) is
+  recommended: paste the `SEC...` value into `secret` and the daemon adds the
+  `timestamp` and `sign` parameters to every request. If you use a keyword
+  instead, make sure your template contains it or DingTalk returns
+  `errcode 310000`.
+- `title` is the notification line shown in the conversation list (markdown only).
+
+Examples: [`examples/dingtalk/`](examples/dingtalk/).
+
+#### WeCom (企业微信)
+
+```json
+"wecom": {
+  "enabled": true,
+  "webhook_url": "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
+  "msg_type": "markdown"
+}
+```
+
+Create the bot with **群设置 → 群机器人 → 添加**.
+
+- WeCom has **no signature scheme**: the `key` in the URL is the only credential,
+  so keep `config.json` at mode `600`/`640` and consider the robot's IP allowlist.
+- `mentioned_list` (e.g. `["@all"]`) and `mentioned_mobile_list` @ people in the
+  group. They work with `msg_type: "text"` only; combining them with `markdown`
+  is rejected at startup.
+- Markdown supports three named colors — `info` (green), `comment` (grey) and
+  `warning` (orange) — via `<font color="warning">…</font>`.
+
+Examples: [`examples/wecom/`](examples/wecom/).
 
 ## Run
 

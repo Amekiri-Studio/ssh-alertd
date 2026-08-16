@@ -38,17 +38,17 @@ type LogSourceConfig struct {
 	Path string `json:"path"`
 }
 
-// NotifiersConfig groups all notifier backends. Telegram and SMTP are
-// implemented today; the remaining fields are placeholders so the schema is
-// stable as new backends land.
+// NotifiersConfig groups all notifier backends. Telegram, SMTP and the three
+// Chinese group-robot webhooks are implemented today; WhatsApp remains a
+// placeholder so the schema stays stable as new backends land.
 type NotifiersConfig struct {
 	Telegram TelegramConfig `json:"telegram"`
 	SMTP     SMTPConfig     `json:"smtp"`
+	Feishu   FeishuConfig   `json:"feishu"`
+	DingTalk DingTalkConfig `json:"dingtalk"`
+	WeCom    WeComConfig    `json:"wecom"`
 	// Reserved for future backends.
 	WhatsApp map[string]any `json:"whatsapp,omitempty"`
-	WeCom    map[string]any `json:"wecom,omitempty"`
-	DingTalk map[string]any `json:"dingtalk,omitempty"`
-	Feishu   map[string]any `json:"feishu,omitempty"`
 }
 
 // TelegramConfig holds the Telegram Bot API credentials.
@@ -102,6 +102,68 @@ type SMTPConfig struct {
 	HTML bool `json:"html"`
 }
 
+// FeishuConfig holds the settings for a Feishu (飞书) / Lark custom group robot.
+type FeishuConfig struct {
+	Enabled bool `json:"enabled"`
+	// WebhookURL is the full custom-bot URL shown when the robot is added to a
+	// group (open.feishu.cn for Feishu, open.larksuite.com for Lark).
+	WebhookURL string `json:"webhook_url"`
+	// Secret enables signed requests ("签名校验"). Empty means the robot relies on
+	// keyword or IP allowlist security instead.
+	Secret string `json:"secret"`
+	// MsgType is "text" (default) or "interactive" (message card).
+	MsgType string `json:"msg_type"`
+	// MessageTemplate is an optional Go template for the message (fields
+	// .Username .IP .Port .Method .Hostname .Time). For "interactive" it must
+	// render a JSON card object. Empty uses the built-in plain-text format.
+	MessageTemplate string `json:"message_template"`
+	// MessageTemplateFile, when set, is read as the message template and takes
+	// precedence over MessageTemplate.
+	MessageTemplateFile string `json:"message_template_file"`
+}
+
+// DingTalkConfig holds the settings for a DingTalk (钉钉) custom group robot.
+type DingTalkConfig struct {
+	Enabled bool `json:"enabled"`
+	// WebhookURL is the full robot URL including the access_token parameter.
+	WebhookURL string `json:"webhook_url"`
+	// Secret enables signed requests ("加签"). DingTalk requires at least one
+	// security setting: signing, a keyword, or an IP allowlist.
+	Secret string `json:"secret"`
+	// MsgType is "text" (default) or "markdown".
+	MsgType string `json:"msg_type"`
+	// Title is the markdown notification title shown in the conversation list
+	// (markdown only). Empty uses a built-in title.
+	Title string `json:"title"`
+	// MessageTemplate is an optional Go template for the message body. Empty
+	// uses the built-in plain-text or Markdown format.
+	MessageTemplate string `json:"message_template"`
+	// MessageTemplateFile, when set, is read as the message template and takes
+	// precedence over MessageTemplate.
+	MessageTemplateFile string `json:"message_template_file"`
+}
+
+// WeComConfig holds the settings for a WeCom (企业微信) group robot.
+type WeComConfig struct {
+	Enabled bool `json:"enabled"`
+	// WebhookURL is the full robot URL including the key parameter. WeCom
+	// robots have no signature scheme, so treat the key as a secret.
+	WebhookURL string `json:"webhook_url"`
+	// MsgType is "text" (default) or "markdown".
+	MsgType string `json:"msg_type"`
+	// MessageTemplate is an optional Go template for the message body. Empty
+	// uses the built-in plain-text or Markdown format.
+	MessageTemplate string `json:"message_template"`
+	// MessageTemplateFile, when set, is read as the message template and takes
+	// precedence over MessageTemplate.
+	MessageTemplateFile string `json:"message_template_file"`
+	// MentionedList are user IDs to @ in the group ("@all" mentions everyone).
+	// Text messages only.
+	MentionedList []string `json:"mentioned_list,omitempty"`
+	// MentionedMobileList are phone numbers to @ in the group. Text only.
+	MentionedMobileList []string `json:"mentioned_mobile_list,omitempty"`
+}
+
 // Load reads, parses and validates the config file at path.
 func Load(path string) (*Config, error) {
 	data, err := os.ReadFile(path)
@@ -152,6 +214,16 @@ func (c *Config) applyDefaults() {
 			smtp.Port = 587
 		}
 	}
+
+	if c.Notifiers.Feishu.MsgType == "" {
+		c.Notifiers.Feishu.MsgType = "text"
+	}
+	if c.Notifiers.DingTalk.MsgType == "" {
+		c.Notifiers.DingTalk.MsgType = "text"
+	}
+	if c.Notifiers.WeCom.MsgType == "" {
+		c.Notifiers.WeCom.MsgType = "text"
+	}
 }
 
 func (c *Config) validate() error {
@@ -192,6 +264,45 @@ func (c *Config) validate() error {
 		}
 		if len(s.To) == 0 {
 			return fmt.Errorf("smtp enabled but to is empty")
+		}
+	}
+
+	if f := c.Notifiers.Feishu; f.Enabled {
+		if f.WebhookURL == "" {
+			return fmt.Errorf("feishu enabled but webhook_url is empty")
+		}
+		switch f.MsgType {
+		case "text", "interactive":
+		default:
+			return fmt.Errorf("feishu msg_type %q is invalid (want text or interactive)", f.MsgType)
+		}
+		if f.MsgType == "interactive" && f.MessageTemplate == "" && f.MessageTemplateFile == "" {
+			return fmt.Errorf(`feishu msg_type "interactive" requires message_template or message_template_file (a JSON card)`)
+		}
+	}
+
+	if d := c.Notifiers.DingTalk; d.Enabled {
+		if d.WebhookURL == "" {
+			return fmt.Errorf("dingtalk enabled but webhook_url is empty")
+		}
+		switch d.MsgType {
+		case "text", "markdown":
+		default:
+			return fmt.Errorf("dingtalk msg_type %q is invalid (want text or markdown)", d.MsgType)
+		}
+	}
+
+	if w := c.Notifiers.WeCom; w.Enabled {
+		if w.WebhookURL == "" {
+			return fmt.Errorf("wecom enabled but webhook_url is empty")
+		}
+		switch w.MsgType {
+		case "text", "markdown":
+		default:
+			return fmt.Errorf("wecom msg_type %q is invalid (want text or markdown)", w.MsgType)
+		}
+		if w.MsgType != "text" && (len(w.MentionedList) > 0 || len(w.MentionedMobileList) > 0) {
+			return fmt.Errorf(`wecom mentioned_list/mentioned_mobile_list require msg_type "text"`)
 		}
 	}
 	return nil
